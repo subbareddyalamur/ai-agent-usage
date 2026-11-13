@@ -6,13 +6,18 @@ Antigravity IDE, Codex, Gemini CLI, ...). Everything is read-only against the
 agents' own files, stored as metadata only (no prompts, no responses, no tool output).
 
 ```bash
-bun run ingest          # read all installed agents into the local DB (idempotent)
-bun run serve           # dashboard on http://127.0.0.1:4317; ingests on start and every 2s (--no-ingest / --no-watch to skip)
+bun run ingest                                      # read installed agents into the local DB
+bun run serve                                       # dashboard on http://127.0.0.1:4317
 bun run src/cli/index.ts report --since 7d --by model
-bun run src/cli/index.ts insights
+bun run src/cli/index.ts insights --since 7d
 bun run src/cli/index.ts status
-bun test                # unit + integration tests
+bun run src/cli/index.ts prices                     # refresh price lists (--force to refetch today)
+bun test
 ```
+
+`serve` ingests on start and every 2 seconds. `--no-ingest` and `--no-watch` turn those off. `--port` changes the port (default 4317).
+
+`report` and `insights` take `--since 7d|36h|2w|YYYY-MM-DD`, `--until now|YYYY-MM-DD`, `--agent a,b`, `--model m1,m2`, `--no-subagents`, `--tz Europe/Berlin`, and `--json`. `report --by` is `day` (default), `week`, `model`, `agent`, or `session`.
 
 DB: `~/.local/share/agent-usage/usage.db` (override with `AGENT_USAGE_DB`).
 
@@ -29,14 +34,21 @@ DB: `~/.local/share/agent-usage/usage.db` (override with `AGENT_USAGE_DB`).
 
 | Thing that changes | What happens |
 |---|---|
-| Prices change / new models | Public AWS Price List is fetched (no credentials) when the newest snapshot is >24h old. Every distinct price list is kept as a dated snapshot; each call is costed with the snapshot in effect when it happened. Deprecated models stay priceable. Google, Anthropic, OpenAI, and xAI pages are fetched on the same daily cadence and win over models.dev; a later rate prices new calls only. |
+| Prices change / new models | Checked once a day, no credentials. AWS Bedrock snapshots are kept, and each Bedrock call keeps the snapshot in effect when it happened. Google, Anthropic, OpenAI, and xAI pages are fetched on the same cadence and win over models.dev. A later rate prices new and still-unpriced calls only. |
 | New model id appears | Matched to the price list by normalised name; Bedrock ARNs are resolved with a read-only `aws bedrock get-inference-profile`. Anything unmatched is listed under Status as *unmapped*, never guessed. |
 | Agent installed / uninstalled | Adapters are auto-discovered and `detect()` runs each time. Not installed = skipped silently, history kept. |
 | New tools / MCP servers | Tool names come from the events; MCP tools group by server automatically. |
 | Insight thresholds | Calibrated from your own history (percentiles); nothing to configure. |
 
-Costs are **estimates** at AWS list price for the region (regional rate for `us.*`/ARNs, global rate for
-`global.*`). Long-context surcharges are not modelled yet.
+Costs are **estimates** at public list price, not an invoice. Bedrock ids use the regional rate, except `global.*`, which uses the global rate. Other providers use the official page when it lists the model, then models.dev. Long-context surcharges are not modelled. An unmatched model stays unpriced and is never shown as $0.
+
+The first matching source wins:
+
+1. AWS Bedrock price list, then the AWS pricing page for models the list does not have yet.
+2. The provider's own page: Google, Anthropic, OpenAI, xAI. Standard, short-context rates. A dated "through / starting" price uses the rate in effect that day.
+3. models.dev, for models those pages do not list.
+4. Free and local models, at $0.
+5. The agent's own reported cost, marked approximate, until a list matches the model.
 
 ## Add a new coding agent (one file)
 
@@ -61,5 +73,16 @@ src/insights/   one file per insight rule (auto-discovered)
 src/server/     127.0.0.1-only HTTP API + static UI
 ui/             React dashboard (Overview, Sessions, Models, Tools, Insights, Concepts, Status)
 src/cli/        serve | ingest | prices | status | report | insights
+agensi/         SKILL.md package listed on Agensi
 src/dev/seed.ts demo data generator (never touches the real DB)
+```
+
+## Agensi skill
+
+`agensi/agent-usage/` is the marketplace skill: `SKILL.md` plus `references/commands.md`. It tells an agent to clone this repo and run the CLI. The dashboard source is not in the package.
+
+The listing is [AI Agent Usage](https://agensi.io/skills/ai-agent-usage) ($5, pending review). Rebuild the upload with:
+
+```bash
+cd agensi/agent-usage && zip -r -X ../ai-agent-usage-skill.zip SKILL.md references
 ```
