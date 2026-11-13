@@ -238,3 +238,36 @@ describe('status and filterOptions', () => {
     expect(filterOptions(await seedDb([]))).toMatchObject({ agents: [], minTs: null, maxTs: null });
   });
 });
+
+describe('cost sources', () => {
+  test('models() reports per-source events and cost, largest first, null = unpriced', async () => {
+    const db = await fixture();
+    // One sonnet event comes from a fallback source, one has a legacy (NULL) source on a priced event.
+    db.exec(`UPDATE events SET cost_source = 'models.dev' WHERE id IN (SELECT id FROM events WHERE model = 'claude-sonnet-5' AND agent = 'alpha' LIMIT 2)`);
+    db.exec(`UPDATE events SET cost_source = 'aws-price-list' WHERE model = 'claude-sonnet-5' AND cost_source IS NULL AND agent = 'alpha' AND cost_usd IS NOT NULL AND id NOT IN (SELECT id FROM events WHERE cost_source = 'models.dev')`);
+    const rows = models(db, {});
+    const sonnet = rows.find((r) => r.model === 'claude-sonnet-5')!;
+    expect((sonnet.costSources.map((c) => c.source) as string[]).sort()).toEqual(['aws-price-list', 'models.dev']);
+    expect(sonnet.costSources[0]!.events).toBeGreaterThanOrEqual(sonnet.costSources[1]!.events);
+    expect(sonnet.costSources.reduce((n, c) => n + c.events, 0)).toBe(sonnet.events);
+    expect(sonnet.costSources.reduce((n, c) => n + c.costUsd, 0)).toBeCloseTo(sonnet.costUsd, 9);
+
+    const mystery = rows.find((r) => r.model === 'mystery-model')!;
+    expect(mystery.costSources).toEqual([{ source: null, events: 2, costUsd: 0 }]);
+  });
+
+  test('a priced event without a recorded source counts as the AWS price list (pre-migration rows)', async () => {
+    const db = await fixture();
+    db.exec('UPDATE events SET cost_source = NULL');
+    const haiku = models(db, {}).find((r) => r.model === 'claude-haiku-4')!;
+    expect(haiku.costSources).toEqual([{ source: 'aws-price-list', events: haiku.events, costUsd: haiku.costUsd }]);
+  });
+
+  test('costSources follow the filters', async () => {
+    const db = await fixture();
+    const beta = models(db, { agents: ['beta'] });
+    expect(beta.map((r) => r.model)).toEqual(['mystery-model']);
+    expect(beta[0]!.costSources[0]!.events).toBe(2);
+  });
+});
+

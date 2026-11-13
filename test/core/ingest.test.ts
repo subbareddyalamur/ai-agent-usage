@@ -112,4 +112,25 @@ describe('runIngest', () => {
     await runIngest(db, [adapter('a', [{ type: 'event', event: makeEvent({ id: 'p', agent: 'a', provider: 'ollama' }) }])], pricing, { home: '/h' });
     expect(seen).toEqual(['ollama']);
   });
+
+  test('falls back to the agent-reported cost when no price exists, and upgrades it once a price appears', async () => {
+    const db = openDb(':memory:');
+    const item: IngestItem = { type: 'event', event: makeEvent({ id: 'r', agent: 'a', modelRaw: 'mystery', reportedCostUsd: 0.5 }) };
+    await runIngest(db, [adapter('a', [item])], fakePricing({ unpriced: ['mystery'] }), { home: '/h' });
+    expect(db.query('SELECT cost_usd c, cost_source s, cost_approx a FROM events').get()).toEqual({ c: 0.5, s: 'agent-reported', a: 1 });
+    expect(await repriceUnpriced(db, fakePricing({ unpriced: ['mystery'] }))).toBe(0);
+    expect(await repriceUnpriced(db, fakePricing())).toBe(1);
+    const row = db.query('SELECT cost_usd c, cost_source s FROM events').get() as { c: number; s: string | null };
+    expect(row.c).toBeCloseTo((100 + 10 * 5) / 1e6);
+    expect(row.s).toBe('aws-price-list');
+  });
+
+  test('zero or missing agent-reported cost is never used as a price', async () => {
+    const db = openDb(':memory:');
+    await runIngest(db, [adapter('a', [
+      { type: 'event', event: makeEvent({ id: 'z', agent: 'a', modelRaw: 'mystery', reportedCostUsd: 0 }) },
+      { type: 'event', event: makeEvent({ id: 'n', agent: 'a', modelRaw: 'mystery' }) },
+    ])], fakePricing({ unpriced: ['mystery'] }), { home: '/h' });
+    expect(count(db, 'SELECT COUNT(*) c FROM events WHERE cost_usd IS NULL')).toBe(2);
+  });
 });

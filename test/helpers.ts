@@ -15,7 +15,7 @@ export function fakePricing(opts: { unpriced?: readonly string[] } = {}): Pricin
       const cost =
         (input.inputTokens * 1 + (input.outputTokens + input.reasoningTokens) * 5 +
           input.cacheReadTokens * 0.1 + (input.cacheWrite5mTokens + input.cacheWrite1hTokens) * 1.25) / 1e6;
-      return { costUsd: cost, approx: false };
+      return { costUsd: cost, approx: false, source: 'aws-price-list' };
     },
   };
 }

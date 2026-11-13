@@ -1,30 +1,32 @@
 import type { Database } from 'bun:sqlite';
 import { defaultExec, isProfileArn, resolveArn, type ExecFn } from './arn';
 import { buildModelIndex, fallbackCanonical, isFreeModel, tierOf, type ModelIndex } from './models';
-import { parseBedrockOffer, parsePriceList, type ParsedPriceList, type PriceKind, type PriceRow } from './pricing-parse';
+import {
+  buildExternalIndex, loadExternalPrices, modelsDevFetchedAt, MODELS_DEV_URL, parseModelsDev, storeExternalPrices,
+  type ExternalIndex, type ExternalPrice,
+} from './pricing-modelsdev';
+import { OFFICIAL_FEEDS, parseOfficial } from './pricing-official';
+import type { ParsedPriceList, PriceKind, PriceRow } from './pricing-parse';
+import { PRICE_SOURCES, type PriceFeed } from './pricing-sources';
 import { DEFAULT_REGION } from './rates';
-import type { PriceInput, PriceTier, PricingService, ResolvedModel } from './types';
+import type { PriceInput, PriceSource, PriceTier, PricingService, ResolvedModel } from './types';
 
-const OFFERS = 'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/';
-
-export interface PriceSource {
-  id: string;
-  url: string;
-  parse(json: unknown): ParsedPriceList;
-}
-
-/** Highest priority first: when two sources price the same key, the earlier one wins. */
-export const PRICE_SOURCES: readonly PriceSource[] = [
-  { id: 'foundation-models', url: `${OFFERS}AmazonBedrockFoundationModels/current/index.json`, parse: parsePriceList },
-  { id: 'bedrock', url: `${OFFERS}AmazonBedrock/current/index.json`, parse: parseBedrockOffer },
-];
-export const PRICE_LIST_URL = (PRICE_SOURCES[0] as PriceSource).url;
+export { PRICE_SOURCES, type PriceFeed } from './pricing-sources';
+export { MODELS_DEV_URL, modelsDevStatus } from './pricing-modelsdev';
+export const PRICE_LIST_URL = (PRICE_SOURCES[0] as PriceFeed).url;
 
 const HOUR_MS = 3600 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const FETCH_TIMEOUT_MS = 120_000;
 const FALLBACK_REGIONS = ['us-east-1', 'us-west-2', 'us-east-2'];
 const LAST_ERROR_KEY = 'pricing.lastError';
+const FAILED_SOURCES_KEY = 'pricing.failedSources';
+const LAST_ATTEMPT_KEY = 'pricing.lastAttemptAt';
+/** Per-feed marker of the last successful fetch; a feed without one (e.g. just added) is fetched at once. */
+const feedFetchedKey = (feed: PriceFeed): string => `pricing.fetchedAt.${feed.id}`;
+const officialFetchedKey = (id: string): string => `pricing.fetchedAt.official.${id}`;
+/** Id used in the failed-source list and in error strings for the models.dev layer. */
+const MODELS_DEV_ID = 'models.dev';
 
 export interface PricingOptions {
   fetch?: typeof fetch;
@@ -43,22 +45,41 @@ interface Snapshot {
   fetchedAt: number;
 }
 
-export function pricingLastError(db: Database): string | undefined {
-  const row = db.query('SELECT value FROM kv WHERE key = ?').get(LAST_ERROR_KEY) as { value: string } | null;
-  return row?.value || undefined;
-}
-
-function setLastError(db: Database, error: string | null): void {
-  if (error === null) db.query('DELETE FROM kv WHERE key = ?').run(LAST_ERROR_KEY);
-  else
-    db.query(
-      'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-    ).run(LAST_ERROR_KEY, error);
+interface RateSet {
+  rates: RateMap;
+  /** `prices.source` of the rows these rates came from. */
+  feed: string;
 }
 
 type SourcedRow = PriceRow & { source: string };
 
 const rowKey = (r: PriceRow): string => `${r.model}|${r.region}|${r.tier}|${r.kind}|${r.longCtx ? 1 : 0}`;
+
+function kvGet(db: Database, key: string): string | undefined {
+  return (db.query('SELECT value FROM kv WHERE key = ?').get(key) as { value: string } | null)?.value;
+}
+
+function kvSet(db: Database, key: string, value: string): void {
+  db.query('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+}
+
+export function pricingLastError(db: Database): string | undefined {
+  return kvGet(db, LAST_ERROR_KEY) || undefined;
+}
+
+function setLastError(db: Database, error: string | undefined): void {
+  if (error === undefined) db.query('DELETE FROM kv WHERE key = ?').run(LAST_ERROR_KEY);
+  else kvSet(db, LAST_ERROR_KEY, error);
+}
+
+function failedSources(db: Database): string[] {
+  try {
+    const parsed: unknown = JSON.parse(kvGet(db, FAILED_SOURCES_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 function hashRows(rows: readonly SourcedRow[]): string {
   const h = new Bun.CryptoHasher('sha256');
@@ -66,15 +87,60 @@ function hashRows(rows: readonly SourcedRow[]): string {
   return h.digest('hex');
 }
 
-/** Merges rows by key; earlier entries win, so list higher-priority sources first. */
-function mergeRows(groups: ReadonlyArray<readonly SourcedRow[]>): SourcedRow[] {
+interface FeedRows {
+  fillOnly: boolean;
+  rows: readonly SourcedRow[];
+}
+
+/**
+ * Merges rows by key; earlier groups win, so list higher-priority feeds first. A fill-only group
+ * contributes just the models that no earlier group prices at all (matched by normalised name).
+ */
+function mergeRows(groups: readonly FeedRows[]): SourcedRow[] {
   const seen = new Map<string, SourcedRow>();
-  for (const group of groups) for (const r of group) if (!seen.has(rowKey(r))) seen.set(rowKey(r), r);
+  for (const g of groups) {
+    const known = g.fillOnly ? buildModelIndex([...new Set([...seen.values()].map((r) => r.model))]) : null;
+    for (const r of g.rows) {
+      if (known?.match(r.model)) continue;
+      if (!seen.has(rowKey(r))) seen.set(rowKey(r), r);
+    }
+  }
   return [...seen.values()].sort((a, b) => rowKey(a).localeCompare(rowKey(b)));
 }
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+const awsSource = (feed: string): PriceSource => (feed === 'pricing-page' ? 'aws-pricing-page' : 'aws-price-list');
+
+/**
+ * Antigravity records internal ids. The generation blob also names the public model
+ * ("Orchestrator (Argon)", "Gemini Flash", "Gemini 3.8 Flash"), which is what the list prices.
+ * Anything not in this table stays unpriced.
+ */
+const BILLED_MODEL: Readonly<Record<string, string>> = {
+  'gemini-pro-orchestrator-g1-pro': 'gemini-4-argon',
+  'gemini-flash-worker-agy': 'gemini-flash-latest',
+  'gemini-3.8-flash-low': 'gemini-3.8-flash',
+  'gemini-3.8-flash-n': 'gemini-3.8-flash',
+  'gemini-3.8-flash-medium': 'gemini-3.8-flash',
+  'gemini-3.8-flash-high': 'gemini-3.8-flash',
+  'gemini-3.8-flash-tiered': 'gemini-3.8-flash',
+  'gemini-3.7-flash-tiered': 'gemini-3.7-flash',
+  'gemini-3.6-flash-tiered': 'gemini-3.6-flash',
+  'gemini-3.6-flash-high': 'gemini-3.6-flash',
+};
+
+function billedModel(raw: string): string | undefined {
+  return BILLED_MODEL[raw.trim().toLowerCase()];
+}
+
+interface AwsOutcome {
+  refreshed: boolean;
+  snapshotId?: number;
+  errors: string[];
+  failed: string[];
 }
 
 export function createPricingService(db: Database, opts: PricingOptions = {}): PricingService {
@@ -85,11 +151,15 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
 
   let snapshots: Snapshot[] | null = null;
   let modelIndex: ModelIndex | null = null;
-  const rateCache = new Map<string, RateMap | null>();
+  let externalIndex: ExternalIndex | null = null;
+  const rateCache = new Map<string, RateSet | null>();
+  const sourceMemo = new Map<string, PriceSource>();
   const resolveMemo = new Map<string, ResolvedModel>();
   /** Resolved objects that cost nothing (free ids, local runtimes); priceEvent recognises them by identity. */
   const freeMemo = new Map<string, ResolvedModel>();
   const freeModels = new WeakSet<ResolvedModel>();
+  /** Resolved objects priced from models.dev, with the entry they were matched to. */
+  const externalOf = new WeakMap<ResolvedModel, ExternalPrice>();
   let inflight: Promise<{ refreshed: boolean; snapshotId?: number; error?: string }> | null = null;
 
   const loadSnapshots = (): Snapshot[] => {
@@ -99,6 +169,8 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
   const invalidate = (): void => {
     snapshots = null;
     modelIndex = null;
+    externalIndex = null;
+    sourceMemo.clear();
     resolveMemo.clear();
   };
   const getIndex = (): ModelIndex => {
@@ -107,47 +179,136 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
     );
     return modelIndex;
   };
+  const getExternal = (): ExternalIndex => {
+    externalIndex ??= buildExternalIndex(loadExternalPrices(db));
+    return externalIndex;
+  };
 
-  const ratesIn = (snapshotId: number, model: string, region: string, tier: PriceTier): RateMap | null => {
+  /** 'aws-price-list' unless every row we have for the model comes from the pricing page. */
+  const sourceOfModel = (canonical: string): PriceSource => {
+    let source = sourceMemo.get(canonical);
+    if (!source) {
+      const bulk = db.query("SELECT 1 FROM prices WHERE model = ? AND source <> 'pricing-page' LIMIT 1").get(canonical);
+      source = bulk ? 'aws-price-list' : 'aws-pricing-page';
+      sourceMemo.set(canonical, source);
+    }
+    return source;
+  };
+
+  // ---- AWS rates -------------------------------------------------------------------------------
+
+  const ratesIn = (snapshotId: number, model: string, region: string, tier: PriceTier): RateSet | null => {
     const key = `${snapshotId}|${model}|${region}|${tier}`;
     const hit = rateCache.get(key);
     if (hit !== undefined) return hit;
     const rows = db
       .query(
-        `SELECT kind, usd_per_mtok AS usd FROM prices
+        `SELECT kind, usd_per_mtok AS usd, source FROM prices
          WHERE snapshot_id = ? AND model = ? AND region = ? AND tier = ? AND long_ctx = 0`,
       )
-      .all(snapshotId, model, region, tier) as Array<{ kind: PriceKind; usd: number }>;
-    const out: RateMap | null = rows.length === 0 ? null : Object.fromEntries(rows.map((r) => [r.kind, r.usd]));
+      .all(snapshotId, model, region, tier) as Array<{ kind: PriceKind; usd: number; source: string }>;
+    const out: RateSet | null =
+      rows.length === 0 ? null : { rates: Object.fromEntries(rows.map((r) => [r.kind, r.usd])), feed: rows[0]?.source ?? '' };
     rateCache.set(key, out);
     return out;
   };
 
   /** Rates for a model in one snapshot: requested tier/region first, then the other tier, then other regions. */
-  const lookupRates = (
-    snapshotId: number,
-    model: string,
-    tier: PriceTier,
-  ): { rates: RateMap; exact: boolean } | null => {
+  const lookupRates = (snapshotId: number, model: string, tier: PriceTier): (RateSet & { exact: boolean }) | null => {
     const regions = [defaultRegion, ...FALLBACK_REGIONS.filter((r) => r !== defaultRegion)];
     const tiers: PriceTier[] = tier === 'global' ? ['global', 'regional'] : ['regional', 'global'];
     for (const t of tiers) {
       for (const region of regions) {
-        const rates = ratesIn(snapshotId, model, region, t);
-        if (rates?.input !== undefined && rates.output !== undefined) {
-          return { rates, exact: t === tier && region === defaultRegion };
+        const set = ratesIn(snapshotId, model, region, t);
+        if (set?.rates.input !== undefined && set.rates.output !== undefined) {
+          return { ...set, exact: t === tier && region === defaultRegion };
         }
       }
     }
     return null;
   };
 
-  const fetchSource = async (src: PriceSource): Promise<ParsedPriceList> => {
-    const res = await doFetch(src.url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-    if (!res.ok) throw new Error(`price list fetch failed: HTTP ${res.status}`);
-    const parsed = src.parse(JSON.parse(await res.text()));
+  // ---- refresh -----------------------------------------------------------------------------------
+
+  const loadFeed = async (feed: PriceFeed): Promise<ParsedPriceList> => {
+    const parsed = await feed.load(doFetch);
     if (parsed.rows.length === 0) throw new Error('price list contained no token prices');
     return parsed;
+  };
+
+  const loadModelsDev = async (): Promise<ExternalPrice[]> => {
+    const res = await doFetch(MODELS_DEV_URL, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!res.ok) throw new Error(`price list fetch failed: HTTP ${res.status}`);
+    const entries = parseModelsDev(JSON.parse(await res.text()));
+    if (entries.length === 0) throw new Error('price list contained no token prices');
+    return entries;
+  };
+
+  const refreshAws = async (
+    latest: { id: number; checked: number; hash: string } | null,
+    fullyDue: boolean,
+    failedBefore: readonly string[],
+    t: number,
+  ): Promise<AwsOutcome> => {
+    const due = (feed: PriceFeed): boolean => fullyDue || failedBefore.includes(feed.id) || kvGet(db, feedFetchedKey(feed)) === undefined;
+    const settled = await Promise.allSettled(PRICE_SOURCES.map((feed) => (due(feed) ? loadFeed(feed) : Promise.resolve(null))));
+    const errors: string[] = [];
+    const failed: string[] = [];
+    const groups: FeedRows[] = [];
+    let publicationDate: string | undefined;
+    const carry = (feed: PriceFeed): void => {
+      const carried = latest
+        ? (db
+            .query(
+              `SELECT model, region, tier, kind, long_ctx AS longCtx, usd_per_mtok AS usdPerMtok
+               FROM prices WHERE snapshot_id = ? AND source = ?`,
+            )
+            .all(latest.id, feed.id) as Array<Omit<SourcedRow, 'source' | 'longCtx'> & { longCtx: number }>)
+        : [];
+      groups.push({ fillOnly: feed.fillOnly ?? false, rows: carried.map((r) => ({ ...r, longCtx: r.longCtx === 1, source: feed.id })) });
+    };
+    settled.forEach((result, i) => {
+      const feed = PRICE_SOURCES[i] as PriceFeed;
+      if (result.status === 'fulfilled' && result.value) {
+        kvSet(db, feedFetchedKey(feed), String(t));
+        publicationDate ??= result.value.publicationDate;
+        groups.push({ fillOnly: feed.fillOnly ?? false, rows: result.value.rows.map((r) => ({ ...r, source: feed.id })) });
+        return;
+      }
+      if (result.status === 'rejected') {
+        errors.push(`${feed.id}: ${errorMessage(result.reason)}`);
+        failed.push(feed.id);
+      }
+      carry(feed); // failed this time, or not due yet: keep what we already know
+    });
+    if (errors.length === PRICE_SOURCES.length) return { refreshed: false, snapshotId: latest?.id, errors, failed };
+
+    try {
+      const rows = mergeRows(groups);
+      const hash = hashRows(rows);
+      if (latest && latest.hash === hash) {
+        if (fullyDue) db.query('UPDATE price_snapshots SET last_checked_at = ? WHERE id = ?').run(t, latest.id);
+        return { refreshed: false, snapshotId: latest.id, errors, failed };
+      }
+      const insertSnap = db.query(
+        `INSERT INTO price_snapshots (fetched_at, last_checked_at, content_hash, source_url, publication_date, row_count)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      const insertPrice = db.prepare(
+        `INSERT INTO prices (snapshot_id, model, region, tier, kind, long_ctx, usd_per_mtok, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      const snapshotId = db.transaction(() => {
+        const info = insertSnap.run(t, t, hash, PRICE_SOURCES.map((f) => f.url).join(','), publicationDate ?? null, rows.length);
+        const id = Number(info.lastInsertRowid);
+        for (const r of rows) insertPrice.run(id, r.model, r.region, r.tier, r.kind, r.longCtx ? 1 : 0, r.usdPerMtok, r.source);
+        return id;
+      })();
+      invalidate();
+      return { refreshed: true, snapshotId, errors, failed };
+    } catch (e: unknown) {
+      return { refreshed: false, errors: [...errors, errorMessage(e)], failed };
+    }
   };
 
   const refresh = async (
@@ -158,85 +319,131 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
     const latest = db
       .query('SELECT id, last_checked_at AS checked, content_hash AS hash FROM price_snapshots ORDER BY fetched_at DESC, id DESC LIMIT 1')
       .get() as { id: number; checked: number; hash: string } | null;
-    // A previous problem shortens the wait, so a failed source is retried within the hour.
-    const wait = pricingLastError(db) ? Math.min(maxAgeMs, HOUR_MS) : maxAgeMs;
-    if (!force && latest && t - latest.checked < wait) return { refreshed: false, snapshotId: latest.id };
+    const failedBefore = failedSources(db);
+    const lastAttempt = Number(kvGet(db, LAST_ATTEMPT_KEY) ?? 0);
+    // After a failure nothing is retried for an hour, whatever else is due.
+    if (!force && failedBefore.length > 0 && t - lastAttempt < HOUR_MS) return { refreshed: false, snapshotId: latest?.id };
+    const modelsDevAt = modelsDevFetchedAt(db);
+    const awsDue = force || !latest || t - latest.checked >= maxAgeMs;
+    const feedMissing = PRICE_SOURCES.some((f) => kvGet(db, feedFetchedKey(f)) === undefined);
+    const modelsDevDue = force || modelsDevAt === null || t - modelsDevAt >= maxAgeMs || failedBefore.includes(MODELS_DEV_ID);
+    const officialDue = (id: string): boolean => {
+      const at = Number(kvGet(db, officialFetchedKey(id)) ?? '');
+      return force || !Number.isFinite(at) || at === 0 || t - at >= maxAgeMs || failedBefore.includes(id);
+    };
+    const anyOfficialDue = OFFICIAL_FEEDS.some((f) => officialDue(f.id));
+    if (!awsDue && !feedMissing && !modelsDevDue && !anyOfficialDue && failedBefore.length === 0) return { refreshed: false, snapshotId: latest?.id };
+    kvSet(db, LAST_ATTEMPT_KEY, String(t));
 
-    const settled = await Promise.allSettled(PRICE_SOURCES.map(fetchSource));
-    const errors: string[] = [];
-    const groups: SourcedRow[][] = [];
-    let publicationDate: string | undefined;
-    settled.forEach((result, i) => {
-      const src = PRICE_SOURCES[i] as PriceSource;
-      if (result.status === 'fulfilled') {
-        publicationDate ??= result.value.publicationDate;
-        groups.push(result.value.rows.map((r) => ({ ...r, source: src.id })));
-        return;
+    const fetchModelsDev = modelsDevDue;
+    const loadOfficial = async (feed: (typeof OFFICIAL_FEEDS)[number]): Promise<ExternalPrice[]> => {
+      const res = await doFetch(feed.url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      if (!res.ok) throw new Error(`price list fetch failed: HTTP ${res.status}`);
+      return parseOfficial(feed.provider, await res.text(), t);
+    };
+    const [aws, external, officialSettled] = await Promise.all([
+      refreshAws(latest, awsDue, failedBefore, t),
+      fetchModelsDev ? loadModelsDev().then((entries) => ({ entries }), (reason: unknown) => ({ reason })) : Promise.resolve(null),
+      Promise.all(OFFICIAL_FEEDS.map((feed) => (
+        officialDue(feed.id) ? loadOfficial(feed).then((entries) => ({ feed, entries }), (reason: unknown) => ({ feed, reason })) : Promise.resolve(null)
+      ))),
+    ]);
+
+    const errors = [...aws.errors];
+    const failed = [...aws.failed];
+    let externalChanged = 0;
+    if (external && 'entries' in external) {
+      try {
+        externalChanged = storeExternalPrices(db, external.entries, t);
+        externalIndex = null;
+        resolveMemo.clear();
+      } catch (e: unknown) {
+        errors.push(`${MODELS_DEV_ID}: ${errorMessage(e)}`);
+        failed.push(MODELS_DEV_ID);
       }
-      errors.push(`${src.id}: ${errorMessage(result.reason)}`);
-      // Keep what we already know from a source that failed this time.
-      const carried = latest
-        ? (db
-            .query(
-              `SELECT model, region, tier, kind, long_ctx AS longCtx, usd_per_mtok AS usdPerMtok
-               FROM prices WHERE snapshot_id = ? AND source = ?`,
-            )
-            .all(latest.id, src.id) as Array<Omit<SourcedRow, 'source' | 'longCtx'> & { longCtx: number }>)
-        : [];
-      groups.push(carried.map((r) => ({ ...r, longCtx: r.longCtx === 1, source: src.id })));
-    });
+    } else if (external) {
+      errors.push(`${MODELS_DEV_ID}: ${errorMessage(external.reason)}`);
+      failed.push(MODELS_DEV_ID);
+    }
+
+    const officialRows: ExternalPrice[] = [];
+    for (const result of officialSettled) {
+      if (!result) continue;
+      if ('entries' in result) {
+        kvSet(db, officialFetchedKey(result.feed.id), String(t));
+        officialRows.push(...result.entries);
+        continue;
+      }
+      errors.push(`${result.feed.id}: ${errorMessage(result.reason)}`);
+      failed.push(result.feed.id);
+    }
+    if (officialRows.length > 0) {
+      try {
+        externalChanged += storeExternalPrices(db, officialRows, t);
+        externalIndex = null;
+        resolveMemo.clear();
+      } catch (e: unknown) {
+        errors.push(`official: ${errorMessage(e)}`);
+      }
+    }
 
     const error = errors.length > 0 ? errors.join('; ') : undefined;
-    if (errors.length === PRICE_SOURCES.length) {
-      setLastError(db, error ?? null);
-      return { refreshed: false, error };
-    }
-
-    try {
-      const rows = mergeRows(groups);
-      const hash = hashRows(rows);
-      setLastError(db, error ?? null);
-
-      if (latest && latest.hash === hash) {
-        db.query('UPDATE price_snapshots SET last_checked_at = ? WHERE id = ?').run(t, latest.id);
-        return { refreshed: false, snapshotId: latest.id, ...(error ? { error } : {}) };
-      }
-
-      const insertSnap = db.query(
-        `INSERT INTO price_snapshots (fetched_at, last_checked_at, content_hash, source_url, publication_date, row_count)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      );
-      const insertPrice = db.prepare(
-        `INSERT INTO prices (snapshot_id, model, region, tier, kind, long_ctx, usd_per_mtok, source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      );
-      const snapshotId = db.transaction(() => {
-        const info = insertSnap.run(t, t, hash, PRICE_SOURCES.map((s) => s.url).join(','), publicationDate ?? null, rows.length);
-        const id = Number(info.lastInsertRowid);
-        for (const r of rows) insertPrice.run(id, r.model, r.region, r.tier, r.kind, r.longCtx ? 1 : 0, r.usdPerMtok, r.source);
-        return id;
-      })();
-      invalidate();
-      return { refreshed: true, snapshotId, ...(error ? { error } : {}) };
-    } catch (e: unknown) {
-      const message = errorMessage(e);
-      setLastError(db, message);
-      return { refreshed: false, error: message };
-    }
+    setLastError(db, error);
+    kvSet(db, FAILED_SOURCES_KEY, JSON.stringify(failed));
+    return {
+      refreshed: aws.refreshed || externalChanged > 0,
+      ...(aws.snapshotId !== undefined ? { snapshotId: aws.snapshotId } : {}),
+      ...(error ? { error } : {}),
+    };
   };
 
-  const resolveUncached = async (raw: string, awsProfile: string | undefined): Promise<ResolvedModel | null> => {
-    const tier = tierOf(raw);
+  // ---- resolution ----------------------------------------------------------------------------------
+
+  const resolveAws = async (raw: string, awsProfile: string | undefined): Promise<{ target: string; hit: string | null } | null> => {
     let target = raw;
     if (isProfileArn(raw)) {
       const modelId = await resolveArn(db, raw, { exec, now: now(), awsProfile, home: opts.home, env: opts.env });
       if (!modelId) return null;
       target = modelId;
     }
-    const hit = getIndex().match(target);
-    return hit
-      ? { canonical: hit, priced: true, tier: isProfileArn(raw) ? 'regional' : tier }
-      : { canonical: fallbackCanonical(target), priced: false, tier: isProfileArn(raw) ? 'regional' : tier };
+    return { target, hit: getIndex().match(target) };
+  };
+
+  const freeModel = (raw: string): ResolvedModel => {
+    const key = `${raw}\u0000${tierOf(raw)}`;
+    let free = freeMemo.get(key);
+    if (!free) {
+      free = { canonical: fallbackCanonical(raw), priced: true, tier: tierOf(raw), source: 'free-model' };
+      freeMemo.set(key, free);
+      freeModels.add(free);
+    }
+    return free;
+  };
+
+  const priceExternal = (
+    e: ExternalPrice,
+    input: PriceInput,
+  ): { costUsd: number; approx: boolean; source: PriceSource } => {
+    const readRate = e.cacheRead ?? e.input;
+    const writeRate = e.cacheWrite ?? e.input;
+    const write1h = e.cacheWrite1h ?? writeRate;
+    const fetchedAt = e.origin === 'official'
+      ? Number(kvGet(db, officialFetchedKey(e.provider)) ?? '') || null
+      : modelsDevFetchedAt(db);
+    // Latest-only prices: events older than the fetch (minus a day) are priced with less certainty.
+    const approx =
+      fetchedAt === null ||
+      input.ts < fetchedAt - DAY_MS ||
+      (e.cacheRead === null && input.cacheReadTokens > 0) ||
+      (e.cacheWrite === null && input.cacheWrite5mTokens + input.cacheWrite1hTokens > 0);
+    const usd =
+      (input.inputTokens * e.input +
+        (input.outputTokens + input.reasoningTokens) * e.output +
+        input.cacheReadTokens * readRate +
+        input.cacheWrite5mTokens * writeRate +
+        input.cacheWrite1hTokens * write1h) /
+      1e6;
+    return { costUsd: usd, approx, source: e.origin === 'official' ? 'official' : 'models.dev' };
   };
 
   return {
@@ -248,51 +455,62 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
     },
 
     async resolveModel(raw, hint) {
-      if (isFreeModel(raw, hint?.provider)) {
-        const key = `${raw}\u0000${tierOf(raw)}`;
-        let free = freeMemo.get(key);
-        if (!free) {
-          free = { canonical: fallbackCanonical(raw), priced: true, tier: tierOf(raw) };
-          freeMemo.set(key, free);
-          freeModels.add(free);
-        }
-        return free;
-      }
-      const memoKey = `${raw}\u0000${hint?.awsProfile ?? ''}`;
+      const billed = billedModel(raw);
+      if (billed) return this.resolveModel(billed, hint);
+      if (isFreeModel(raw, hint?.provider)) return freeModel(raw);
+      const memoKey = `${raw}\u0000${hint?.awsProfile ?? ''}\u0000${hint?.provider ?? ''}`;
       const memo = resolveMemo.get(memoKey);
       if (memo) return memo;
 
       const tier = tierOf(raw);
-      const newest = loadSnapshots().at(-1)?.fetchedAt ?? 0;
-      if (!isProfileArn(raw)) {
-        const row = db
-          .query('SELECT canonical, priced, resolved_at AS at FROM model_cache WHERE raw = ? AND tier = ?')
-          .get(raw, tier) as { canonical: string; priced: number; at: number } | null;
-        if (row && (row.priced === 1 || row.at >= newest)) {
-          const cached: ResolvedModel = { canonical: row.canonical, priced: row.priced === 1, tier };
-          resolveMemo.set(memoKey, cached);
-          return cached;
-        }
-      }
+      const arn = isProfileArn(raw);
+      const remember = (r: ResolvedModel): ResolvedModel => {
+        resolveMemo.set(memoKey, r);
+        return r;
+      };
 
-      const resolved = await resolveUncached(raw, hint?.awsProfile);
-      if (!resolved) {
+      // 1. AWS price list, then the AWS pricing page (both live in the snapshots).
+      if (!arn) {
+        const row = db
+          .query('SELECT canonical FROM model_cache WHERE raw = ? AND tier = ? AND priced = 1')
+          .get(raw, tier) as { canonical: string } | null;
+        if (row) return remember({ canonical: row.canonical, priced: true, tier, source: sourceOfModel(row.canonical) });
+      }
+      const aws = await resolveAws(raw, hint?.awsProfile);
+      if (!aws) {
         // Unresolvable ARN: report it as an unpriced, clearly-labelled profile; retried via arn_cache after 1h.
         const id = raw.split('/').at(-1) ?? raw;
         return { canonical: `bedrock-profile/${id}`, priced: false, tier: 'regional' };
       }
-      if (!isProfileArn(raw)) {
-        db.query(
-          `INSERT INTO model_cache (raw, tier, canonical, priced, resolved_at) VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(raw, tier) DO UPDATE SET canonical = excluded.canonical, priced = excluded.priced, resolved_at = excluded.resolved_at`,
-        ).run(raw, tier, resolved.canonical, resolved.priced ? 1 : 0, now());
+      const awsTier: PriceTier = arn ? 'regional' : tier;
+      if (aws.hit) {
+        if (!arn) {
+          db.query(
+            `INSERT INTO model_cache (raw, tier, canonical, priced, resolved_at) VALUES (?, ?, ?, 1, ?)
+             ON CONFLICT(raw, tier) DO UPDATE SET canonical = excluded.canonical, priced = 1, resolved_at = excluded.resolved_at`,
+          ).run(raw, tier, aws.hit, now());
+        }
+        return remember({ canonical: aws.hit, priced: true, tier: awsTier, source: sourceOfModel(aws.hit) });
       }
-      resolveMemo.set(memoKey, resolved);
-      return resolved;
+
+      // 2. Official provider pages, then models.dev for anything those pages do not list.
+      const ext = getExternal().lookup(aws.target, hint?.provider);
+      if (ext) {
+        const resolved: ResolvedModel = {
+          canonical: fallbackCanonical(aws.target), priced: true, tier: awsTier,
+          source: ext.origin === 'official' ? 'official' : 'models.dev',
+        };
+        externalOf.set(resolved, ext);
+        return remember(resolved);
+      }
+      return remember({ canonical: fallbackCanonical(aws.target), priced: false, tier: awsTier });
     },
 
     priceEvent(model: ResolvedModel, input: PriceInput) {
-      if (freeModels.has(model)) return { costUsd: 0, approx: false };
+      if (freeModels.has(model)) return { costUsd: 0, approx: false, source: 'free-model' };
+      const ext = externalOf.get(model);
+      if (ext) return priceExternal(ext, input);
+
       const snaps = loadSnapshots();
       if (!model.priced || snaps.length === 0) return { costUsd: null, approx: false };
 
@@ -305,13 +523,9 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
       const order = snaps
         .map((_, i) => i)
         .sort((a, b) => Math.abs(a - idx) - Math.abs(b - idx) || a - b);
-      let found: { rates: RateMap; exact: boolean } | null = null;
+      let found: (RateSet & { exact: boolean }) | null = null;
       for (const i of order) {
-        found = lookupRates(
-          (snaps[i] as Snapshot).id,
-          model.canonical,
-          model.tier,
-        );
+        found = lookupRates((snaps[i] as Snapshot).id, model.canonical, model.tier);
         if (found) {
           if (i !== idx) approx = true;
           break;
@@ -339,7 +553,7 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
           input.cacheWrite5mTokens * w5 +
           input.cacheWrite1hTokens * w1h) /
         1e6;
-      return { costUsd: usd, approx };
+      return { costUsd: usd, approx, source: awsSource(found.feed) };
     },
   };
 }

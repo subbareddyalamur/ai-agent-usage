@@ -13,6 +13,16 @@ export function asString(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
 
+/** Maker hint for the pricer. Unknown prefixes stay unset so resolution can search every maker. */
+export function providerForModel(model: string): string | undefined {
+  const m = model.toLowerCase();
+  if (m.startsWith('claude')) return 'anthropic';
+  if (m.startsWith('gemini')) return 'google';
+  if (m.startsWith('gpt-') || m.startsWith('o1') || m.startsWith('o3') || m.startsWith('o4')) return 'openai';
+  if (m.startsWith('grok')) return 'xai';
+  return undefined;
+}
+
 /** Non-negative integer or 0. Never NaN/negative so downstream sums stay sane. */
 export function toInt(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : 0;

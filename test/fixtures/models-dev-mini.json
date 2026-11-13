@@ -1,0 +1,1385 @@
+{
+ "opencode": {
+  "id": "opencode",
+  "name": "OpenCode Zen",
+  "models": {
+   "gpt-5-nano": {
+    "id": "gpt-5-nano",
+    "name": "GPT-5 Nano",
+    "description": "Compact GPT model for low-latency assistance and high-volume workloads",
+    "family": "gpt-nano",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "minimal",
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": false,
+    "knowledge": "2024-05-30",
+    "release_date": "2025-08-07",
+    "last_updated": "2025-08-07",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 400000,
+     "input": 272000,
+     "output": 128000
+    },
+    "provider": {
+     "npm": "@ai-sdk/openai"
+    },
+    "cost": {
+     "input": 0.05,
+     "output": 0.4,
+     "cache_read": 0.005
+    }
+   },
+   "big-pickle": {
+    "id": "big-pickle",
+    "name": "Big Pickle",
+    "description": "Reasoning model for deliberate analysis, multi-step problem solving, and tool use",
+    "family": "big-pickle",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [],
+    "tool_call": true,
+    "interleaved": {
+     "field": "reasoning_content"
+    },
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2025-01",
+    "release_date": "2025-10-17",
+    "last_updated": "2025-10-17",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 200000,
+     "input": 160000,
+     "output": 32000
+    },
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cache_read": 0,
+     "cache_write": 0
+    }
+   },
+   "gpt-5": {
+    "id": "gpt-5",
+    "name": "GPT-5",
+    "description": "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
+    "family": "gpt",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "minimal",
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": false,
+    "knowledge": "2024-09-30",
+    "release_date": "2025-08-07",
+    "last_updated": "2025-08-07",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 400000,
+     "input": 272000,
+     "output": 128000
+    },
+    "provider": {
+     "npm": "@ai-sdk/openai"
+    },
+    "cost": {
+     "input": 1.07,
+     "output": 8.5,
+     "cache_read": 0.107
+    }
+   }
+  }
+ },
+ "google": {
+  "id": "google",
+  "name": "Google",
+  "models": {
+   "gemini-3-flash-preview": {
+    "id": "gemini-3-flash-preview",
+    "name": "Gemini 3 Flash Preview",
+    "description": "New Gemini flash lane bringing frontier-style multimodal reasoning to cheaper runs",
+    "family": "gemini-flash",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "minimal",
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2025-01",
+    "release_date": "2025-12-17",
+    "last_updated": "2025-12-17",
+    "modalities": {
+     "input": [
+      "text",
+      "image",
+      "video",
+      "audio",
+      "pdf"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 1048576,
+     "output": 65536
+    },
+    "cost": {
+     "input": 0.5,
+     "output": 3,
+     "cache_read": 0.05,
+     "input_audio": 1
+    }
+   },
+   "gemini-3.6-flash": {
+    "id": "gemini-3.6-flash",
+    "name": "Gemini 3.6 Flash",
+    "description": "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
+    "family": "gemini-flash",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "minimal",
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2026-03",
+    "release_date": "2026-07-21",
+    "last_updated": "2026-07-21",
+    "modalities": {
+     "input": [
+      "text",
+      "image",
+      "video",
+      "audio",
+      "pdf"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 1048576,
+     "output": 65536
+    },
+    "cost": {
+     "input": 0.75,
+     "output": 3.75,
+     "cache_read": 0.075,
+     "input_audio": 0.75
+    },
+    "canonical_model_id": "google/gemini-3.6-flash"
+   },
+   "gemini-flash-latest": {
+    "id": "gemini-flash-latest",
+    "name": "Gemini Flash Latest",
+    "description": "High-efficiency Gemini model for agentic workflows, coding, and multimodal reasoning",
+    "family": "gemini-flash",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2026-03",
+    "release_date": "2026-08-13",
+    "last_updated": "2026-08-13",
+    "modalities": {
+     "input": [
+      "text",
+      "image",
+      "video",
+      "audio",
+      "pdf"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 1048576,
+     "output": 65536
+    },
+    "cost": {
+     "input": 0.75,
+     "output": 3.75,
+     "cache_read": 0.075,
+     "input_audio": 0.75
+    }
+   }
+  }
+ },
+ "openrouter": {
+  "id": "openrouter",
+  "name": "OpenRouter",
+  "models": {
+   "deepseek/deepseek-v4-flash": {
+    "id": "deepseek/deepseek-v4-flash",
+    "name": "DeepSeek V4 Flash",
+    "description": "Fast DeepSeek V4 lane for economical reasoning, coding, and long-context work",
+    "family": "deepseek-flash",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "toggle"
+     },
+     {
+      "type": "effort",
+      "values": [
+       "high",
+       "xhigh"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "interleaved": {
+     "field": "reasoning_content"
+    },
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2025-05",
+    "release_date": "2026-04-24",
+    "last_updated": "2026-04-24",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 1048576,
+     "output": 943718
+    },
+    "cost": {
+     "input": 0.0085,
+     "output": 1.28,
+     "cache_read": 0.0085
+    },
+    "canonical_model_id": "deepseek/deepseek-v4-flash"
+   },
+   "openai/gpt-5-nano": {
+    "id": "openai/gpt-5-nano",
+    "name": "GPT-5 Nano",
+    "description": "Tiny GPT-5 lane for routing, extraction, classification, and bulk jobs",
+    "family": "gpt-nano",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "minimal",
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": false,
+    "knowledge": "2024-05-30",
+    "release_date": "2025-08-07",
+    "last_updated": "2025-08-07",
+    "modalities": {
+     "input": [
+      "text",
+      "image",
+      "pdf"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 400000,
+     "input": 272000,
+     "output": 128000
+    },
+    "cost": {
+     "input": 0.05,
+     "output": 0.4,
+     "cache_read": 0.005
+    },
+    "canonical_model_id": "openai/gpt-5-nano"
+   }
+  }
+ },
+ "mistral": {
+  "id": "mistral",
+  "name": "Mistral",
+  "models": {
+   "mistral-large-latest": {
+    "id": "mistral-large-latest",
+    "name": "Mistral Large (latest)",
+    "description": "Flagship Mistral model for advanced reasoning, coding, and multilingual work",
+    "family": "mistral-large",
+    "attachment": true,
+    "reasoning": false,
+    "tool_call": true,
+    "temperature": true,
+    "knowledge": "2024-11",
+    "release_date": "2024-11-01",
+    "last_updated": "2025-12-02",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 262144,
+     "output": 262144
+    },
+    "cost": {
+     "input": 0.5,
+     "output": 1.5,
+     "cache_read": 0.05
+    }
+   },
+   "open-mistral-7b": {
+    "id": "open-mistral-7b",
+    "name": "Mistral 7B",
+    "description": "Mistral model for multilingual chat, reasoning, and tool-assisted workflows",
+    "family": "mistral",
+    "attachment": false,
+    "reasoning": false,
+    "tool_call": true,
+    "temperature": true,
+    "knowledge": "2023-12",
+    "release_date": "2023-09-27",
+    "last_updated": "2023-09-27",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 8000,
+     "output": 8000
+    },
+    "status": "deprecated",
+    "cost": {
+     "input": 0.25,
+     "output": 0.25
+    }
+   }
+  }
+ },
+ "nvidia": {
+  "id": "nvidia",
+  "name": "Nvidia",
+  "models": {
+   "minimaxai/minimax-m2.7": {
+    "id": "minimaxai/minimax-m2.7",
+    "name": "MiniMax-M2.7",
+    "description": "MiniMax model for chat, coding, office work, and agentic tasks",
+    "family": "minimax",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [],
+    "tool_call": true,
+    "temperature": true,
+    "release_date": "2026-03-18",
+    "last_updated": "2026-04-11",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 204800,
+     "output": 131072
+    },
+    "status": "deprecated",
+    "cost": {
+     "input": 0,
+     "output": 0
+    }
+   }
+  }
+ },
+ "openai": {
+  "id": "openai",
+  "name": "OpenAI",
+  "models": {
+   "gpt-5": {
+    "id": "gpt-5",
+    "name": "GPT-5",
+    "description": "Original GPT-5 workhorse for reasoning, coding, writing, and tool workflows",
+    "family": "gpt",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "minimal",
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": false,
+    "knowledge": "2024-09-30",
+    "release_date": "2025-08-07",
+    "last_updated": "2025-08-07",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 400000,
+     "input": 272000,
+     "output": 128000
+    },
+    "experimental": {
+     "modes": {
+      "fast": {
+       "cost": {
+        "input": 2.5,
+        "output": 20,
+        "cache_read": 0.25
+       },
+       "provider": {
+        "body": {
+         "service_tier": "priority"
+        }
+       }
+      },
+      "flex": {
+       "cost": {
+        "input": 0.625,
+        "output": 5,
+        "cache_read": 0.0625
+       },
+       "provider": {
+        "body": {
+         "service_tier": "flex"
+        }
+       }
+      }
+     }
+    },
+    "cost": {
+     "input": 1.25,
+     "output": 10,
+     "cache_read": 0.125
+    },
+    "canonical_model_id": "openai/gpt-5"
+   },
+   "gpt-5-nano": {
+    "id": "gpt-5-nano",
+    "name": "GPT-5 Nano",
+    "description": "Tiny GPT-5 lane for routing, extraction, classification, and bulk jobs",
+    "family": "gpt-nano",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "minimal",
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": false,
+    "knowledge": "2024-05-30",
+    "release_date": "2025-08-07",
+    "last_updated": "2025-08-07",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 400000,
+     "input": 272000,
+     "output": 128000
+    },
+    "experimental": {
+     "modes": {
+      "flex": {
+       "cost": {
+        "input": 0.025,
+        "output": 0.2,
+        "cache_read": 0.0025
+       },
+       "provider": {
+        "body": {
+         "service_tier": "flex"
+        }
+       }
+      }
+     }
+    },
+    "cost": {
+     "input": 0.05,
+     "output": 0.4,
+     "cache_read": 0.005
+    }
+   },
+   "gpt-4o": {
+    "id": "gpt-4o",
+    "name": "GPT-4o",
+    "description": "Omni-era GPT for multimodal chat, practical coding, and general assistants",
+    "family": "gpt",
+    "attachment": true,
+    "reasoning": false,
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2023-09",
+    "release_date": "2024-05-13",
+    "last_updated": "2024-08-06",
+    "modalities": {
+     "input": [
+      "text",
+      "image",
+      "pdf"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 128000,
+     "output": 16384
+    },
+    "experimental": {
+     "modes": {
+      "fast": {
+       "cost": {
+        "input": 4.25,
+        "output": 17,
+        "cache_read": 2.125
+       },
+       "provider": {
+        "body": {
+         "service_tier": "priority"
+        }
+       }
+      }
+     }
+    },
+    "cost": {
+     "input": 2.5,
+     "output": 10,
+     "cache_read": 1.25
+    }
+   },
+   "gpt-4o-2024-05-13": {
+    "id": "gpt-4o-2024-05-13",
+    "name": "GPT-4o (2024-05-13)",
+    "description": "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
+    "family": "gpt",
+    "attachment": true,
+    "reasoning": false,
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2023-09",
+    "release_date": "2024-05-13",
+    "last_updated": "2024-05-13",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 128000,
+     "output": 4096
+    },
+    "status": "deprecated",
+    "experimental": {
+     "modes": {
+      "fast": {
+       "cost": {
+        "input": 8.75,
+        "output": 26.25
+       },
+       "provider": {
+        "body": {
+         "service_tier": "priority"
+        }
+       }
+      }
+     }
+    },
+    "cost": {
+     "input": 5,
+     "output": 15
+    }
+   },
+   "gpt-4o-2024-08-06": {
+    "id": "gpt-4o-2024-08-06",
+    "name": "GPT-4o (2024-08-06)",
+    "description": "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
+    "family": "gpt",
+    "attachment": true,
+    "reasoning": false,
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2023-09",
+    "release_date": "2024-08-06",
+    "last_updated": "2024-08-06",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 128000,
+     "output": 16384
+    },
+    "cost": {
+     "input": 2.5,
+     "output": 10,
+     "cache_read": 1.25
+    }
+   }
+  }
+ },
+ "zai": {
+  "id": "zai",
+  "name": "Z.AI",
+  "models": {
+   "glm-5": {
+    "id": "glm-5",
+    "name": "GLM-5",
+    "description": "General GLM flagship for coding, analysis, and tool-heavy engineering workflows",
+    "family": "glm",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "toggle"
+     }
+    ],
+    "tool_call": true,
+    "interleaved": {
+     "field": "reasoning_content"
+    },
+    "temperature": true,
+    "release_date": "2026-02-12",
+    "last_updated": "2026-02-12",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 204800,
+     "output": 131072
+    },
+    "cost": {
+     "input": 1,
+     "output": 3.2,
+     "cache_read": 0.2,
+     "cache_write": 0
+    },
+    "canonical_model_id": "zhipuai/glm-5"
+   },
+   "glm-5.3": {
+    "id": "glm-5.3",
+    "name": "GLM-5.3",
+    "description": "Flagship GLM model for long-horizon coding, agents, and complex project delivery",
+    "family": "glm",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "low",
+       "high",
+       "max"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "interleaved": {
+     "field": "reasoning_content"
+    },
+    "structured_output": true,
+    "temperature": true,
+    "release_date": "2026-08-14",
+    "last_updated": "2026-08-14",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 1000000,
+     "output": 131072
+    },
+    "cost": {
+     "input": 1.4,
+     "output": 4.4,
+     "cache_read": 0.26,
+     "cache_write": 0
+    },
+    "canonical_model_id": "zhipuai/glm-5.3"
+   }
+  }
+ },
+ "deepseek": {
+  "id": "deepseek",
+  "name": "DeepSeek",
+  "models": {
+   "deepseek-v4-flash": {
+    "id": "deepseek-v4-flash",
+    "name": "DeepSeek V4 Flash",
+    "description": "DeepSeek V4.1 Flash model for reasoning and agentic coding",
+    "family": "deepseek-flash",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "toggle"
+     },
+     {
+      "type": "effort",
+      "values": [
+       "low",
+       "high",
+       "max"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "interleaved": {
+     "field": "reasoning_content"
+    },
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2025-05",
+    "release_date": "2026-09-10",
+    "last_updated": "2026-09-10",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 1000000,
+     "output": 393216
+    },
+    "status": "deprecated",
+    "cost": {
+     "input": 0.15,
+     "output": 0.6,
+     "reasoning": 0.6,
+     "cache_read": 0.003
+    },
+    "canonical_model_id": "deepseek/deepseek-v4.1-flash"
+   }
+  }
+ },
+ "nano-gpt": {
+  "id": "nano-gpt",
+  "name": "NanoGPT",
+  "models": {
+   "z-ai/glm-5": {
+    "id": "z-ai/glm-5",
+    "name": "GLM 5",
+    "description": "General GLM flagship for coding, analysis, and tool-heavy engineering workflows",
+    "family": "glm",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "release_date": "2026-02-12",
+    "last_updated": "2026-02-12",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 200000,
+     "input": 200000,
+     "output": 128000
+    },
+    "cost": {
+     "input": 0.5,
+     "output": 2.55,
+     "cache_read": 0.13
+    },
+    "canonical_model_id": "zhipuai/glm-5"
+   },
+   "z-ai/glm-5.3": {
+    "id": "z-ai/glm-5.3",
+    "name": "GLM 5.3",
+    "description": "Flagship GLM model for long-horizon coding, agents, and complex project delivery",
+    "family": "glm",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "low",
+       "high",
+       "max"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "release_date": "2026-08-14",
+    "last_updated": "2026-08-14",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 1048576,
+     "input": 1048576,
+     "output": 131072
+    },
+    "cost": {
+     "input": 0.6,
+     "output": 2.2,
+     "cache_read": 0.2
+    },
+    "canonical_model_id": "zhipuai/glm-5.3"
+   },
+   "deepseek/deepseek-v4-flash": {
+    "id": "deepseek/deepseek-v4-flash",
+    "name": "DeepSeek V4 Flash",
+    "description": "Fast DeepSeek V4 lane for economical reasoning, coding, and long-context work",
+    "family": "deepseek-flash",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "none",
+       "high",
+       "max"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2025-05",
+    "release_date": "2026-04-24",
+    "last_updated": "2026-04-24",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 1048576,
+     "input": 1048576,
+     "output": 384000
+    },
+    "cost": {
+     "input": 0.14,
+     "output": 0.28,
+     "cache_read": 0.0028
+    },
+    "canonical_model_id": "deepseek/deepseek-v4-flash"
+   },
+   "tencent/hy3": {
+    "id": "tencent/hy3",
+    "name": "Tencent Hy3",
+    "description": "Tencent Hy reasoning model for coding, instruction following, and agent tasks",
+    "family": "Hy",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "none",
+       "low",
+       "high"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "release_date": "2026-07-06",
+    "last_updated": "2026-07-06",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 262144,
+     "input": 262144,
+     "output": 128000
+    },
+    "cost": {
+     "input": 0.066,
+     "output": 0.26,
+     "cache_read": 0.029
+    },
+    "canonical_model_id": "tencent/hy3"
+   }
+  }
+ },
+ "alibaba-token-plan": {
+  "id": "alibaba-token-plan",
+  "name": "Alibaba Token Plan",
+  "models": {
+   "glm-5": {
+    "id": "glm-5",
+    "name": "GLM-5",
+    "description": "General GLM flagship for coding, analysis, and tool-heavy engineering workflows",
+    "family": "glm",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "toggle"
+     }
+    ],
+    "tool_call": true,
+    "interleaved": {
+     "field": "reasoning_content"
+    },
+    "structured_output": true,
+    "temperature": true,
+    "release_date": "2026-02-12",
+    "last_updated": "2026-02-12",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 202752,
+     "output": 16384
+    },
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cache_read": 0,
+     "cache_write": 0
+    },
+    "canonical_model_id": "zhipuai/glm-5"
+   }
+  }
+ },
+ "deepinfra": {
+  "id": "deepinfra",
+  "name": "Deep Infra",
+  "models": {
+   "tencent/Hy3": {
+    "id": "tencent/Hy3",
+    "name": "Hy3",
+    "description": "Tencent Hy reasoning model for coding, instruction following, and agent tasks",
+    "family": "Hy",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "release_date": "2026-07-06",
+    "last_updated": "2026-07-06",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 262144,
+     "input": 192000,
+     "output": 128000
+    },
+    "status": "deprecated",
+    "cost": {
+     "input": 0.13,
+     "output": 0.53,
+     "cache_read": 0.033
+    },
+    "canonical_model_id": "tencent/hy3"
+   }
+  }
+ },
+ "siliconflow": {
+  "id": "siliconflow",
+  "name": "SiliconFlow",
+  "models": {
+   "tencent/Hy3": {
+    "id": "tencent/Hy3",
+    "name": "Hy3",
+    "description": "Tencent Hy reasoning model for coding, instruction following, and agent tasks",
+    "family": "Hy",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "budget_tokens",
+      "min": 128,
+      "max": 32768
+     }
+    ],
+    "tool_call": true,
+    "temperature": true,
+    "release_date": "2026-07-06",
+    "last_updated": "2026-07-06",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 262144,
+     "input": 192000,
+     "output": 262144
+    },
+    "cost": {
+     "input": 0.132,
+     "output": 0.528,
+     "cache_read": 0.033
+    },
+    "canonical_model_id": "tencent/hy3"
+   }
+  }
+ },
+ "llmgateway-providers": {
+  "id": "llmgateway-providers",
+  "name": "LLM Gateway",
+  "models": {
+   "tencent/hy3": {
+    "id": "tencent/hy3",
+    "name": "Hy3 (Tencent Cloud)",
+    "description": "Tencent Hy reasoning model for coding, instruction following, and agent tasks",
+    "family": "Hy",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [
+     {
+      "type": "effort",
+      "values": [
+       "none",
+       "minimal",
+       "low",
+       "medium",
+       "high",
+       "xhigh"
+      ]
+     }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "release_date": "2026-07-06",
+    "last_updated": "2026-07-06",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": true,
+    "limit": {
+     "context": 262144,
+     "output": 131072
+    },
+    "cost": {
+     "input": 0.132,
+     "output": 0.528,
+     "cache_read": 0.033
+    },
+    "canonical_model_id": "tencent/hy3"
+   },
+   "xai/grok-4": {
+    "id": "xai/grok-4",
+    "name": "Grok 4 (xAI)",
+    "description": "Grok model for agentic tool use, reasoning, coding, and live assistance",
+    "family": "grok",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [],
+    "tool_call": true,
+    "structured_output": false,
+    "temperature": true,
+    "release_date": "2025-07-09",
+    "last_updated": "2025-07-09",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 256000,
+     "output": 256000
+    },
+    "cost": {
+     "input": 3,
+     "output": 15,
+     "cache_read": 0.75
+    }
+   }
+  }
+ },
+ "poe": {
+  "id": "poe",
+  "name": "Poe",
+  "models": {
+   "xai/grok-4": {
+    "id": "xai/grok-4",
+    "name": "Grok-4",
+    "description": "Grok model for agentic tool use, reasoning, coding, and live assistance",
+    "family": "grok",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [],
+    "tool_call": true,
+    "temperature": false,
+    "release_date": "2025-07-10",
+    "last_updated": "2025-07-10",
+    "modalities": {
+     "input": [
+      "text",
+      "image"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 256000,
+     "output": 128000
+    },
+    "cost": {
+     "input": 3,
+     "output": 15,
+     "cache_read": 0.75
+    }
+   }
+  }
+ },
+ "fastrouter": {
+  "id": "fastrouter",
+  "name": "FastRouter",
+  "models": {
+   "x-ai/grok-4": {
+    "id": "x-ai/grok-4",
+    "name": "Grok 4",
+    "description": "Grok model for agentic tool use, reasoning, coding, and live assistance",
+    "family": "grok",
+    "attachment": false,
+    "reasoning": true,
+    "reasoning_options": [],
+    "tool_call": true,
+    "temperature": true,
+    "knowledge": "2025-07",
+    "release_date": "2025-07-09",
+    "last_updated": "2025-07-09",
+    "modalities": {
+     "input": [
+      "text"
+     ],
+     "output": [
+      "text"
+     ]
+    },
+    "open_weights": false,
+    "limit": {
+     "context": 256000,
+     "output": 64000
+    },
+    "cost": {
+     "input": 3,
+     "output": 15,
+     "cache_read": 0.75,
+     "cache_write": 15
+    }
+   }
+  }
+ }
+}

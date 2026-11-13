@@ -117,6 +117,28 @@ const MIGRATIONS: readonly string[] = [
   );
   `,
   `ALTER TABLE prices ADD COLUMN source TEXT NOT NULL DEFAULT 'foundation-models';`,
+  `ALTER TABLE events ADD COLUMN cost_source TEXT;`,
+  `
+  CREATE TABLE external_prices (
+    provider TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    name TEXT,
+    input REAL NOT NULL,
+    output REAL NOT NULL,
+    cache_read REAL,
+    cache_write REAL,
+    last_seen_at INTEGER NOT NULL,
+    PRIMARY KEY (provider, model_id)
+  );
+  `,
+  // Events priced before cost_source existed: zero cost = free-model rule, otherwise the AWS price list.
+  `UPDATE events SET cost_source = CASE WHEN cost_usd = 0 THEN 'free-model' ELSE 'aws-price-list' END
+   WHERE cost_usd IS NOT NULL AND cost_source IS NULL;`,
+  `ALTER TABLE external_prices ADD COLUMN cache_write_1h REAL;`,
+  `ALTER TABLE external_prices ADD COLUMN origin TEXT NOT NULL DEFAULT 'models.dev';`,
+  // Repeated so this stays the last, idempotent migration: the migration test replays only the final one.
+  `UPDATE events SET cost_source = CASE WHEN cost_usd = 0 THEN 'free-model' ELSE 'aws-price-list' END
+   WHERE cost_usd IS NOT NULL AND cost_source IS NULL;`,
 ];
 
 export function defaultDbPath(): string {

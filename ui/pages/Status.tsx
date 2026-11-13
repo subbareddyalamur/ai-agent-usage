@@ -1,11 +1,15 @@
-import type { AdapterStatus, StatusInfo } from '../../src/core/api-types';
+import type { AdapterStatus, CostSourceShare, StatusInfo } from '../../src/core/api-types';
 import { DataTable, type Column } from '../components/DataTable';
+import { SourceTag } from '../components/SourceBadge';
 import { Async } from '../components/States';
 import { useApi } from '../lib/api';
-import { formatBytes, formatDate, formatDateTime, formatTokens, relativeTime } from '../lib/format';
+import { formatBytes, formatDate, formatDateTime, formatPct, formatTokens, formatUsd, relativeTime } from '../lib/format';
+import { shareOfEvents, sourceKey } from '../lib/priceSource';
+import { useRoute } from '../lib/router';
 
 export function Status({ refreshKey, onRefresh, refreshing, refreshError }: { refreshKey: number; onRefresh(): void; refreshing: boolean; refreshError: string | null }) {
   const state = useApi<StatusInfo>('/api/status', refreshKey);
+  const route = useRoute();
 
   const cols: Column<AdapterStatus>[] = [
     { key: 'a', header: 'Agent', render: (r) => <><strong>{r.label}</strong> <span className="muted">({r.id})</span></> },
@@ -53,6 +57,25 @@ export function Status({ refreshKey, onRefresh, refreshing, refreshError }: { re
                 </ul>
               )}
               {s.pricing.lastError && <div className="banner bad" role="alert">Last price check failed: {s.pricing.lastError}. The previous list is still used.</div>}
+            </section>
+            <section className="card">
+              <h2>Where costs come from</h2>
+              <p className="muted">
+                AWS sources are list prices. Google, Anthropic, OpenAI, and xAI prices are read from each provider's own page once a day. models.dev fills models those pages do not list. Agent-reported costs are the agent's own number
+                and are replaced automatically when a price list gains the model. Unpriced calls are left out of totals, never counted as $0.{' '}
+                <a href={route.hrefFor(['concepts'], { section: 'price-sources' })}>How prices are chosen</a>.
+              </p>
+              <DataTable
+                caption="Cost sources across all history (costs are estimates)"
+                columns={[
+                  { key: 's', header: 'Source', render: (r: CostSourceShare) => <SourceTag source={sourceKey(r.source)} /> },
+                  { key: 'e', header: 'Calls', num: true, render: (r) => r.events.toLocaleString() },
+                  { key: 'sh', header: 'Share of calls', num: true, render: (r) => formatPct(shareOfEvents(r.events, s.pricing.costSources)) },
+                  { key: 'c', header: 'Est. cost', num: true, render: (r) => (r.source === null ? <span className="muted">unknown</span> : formatUsd(r.costUsd)) },
+                ]}
+                rows={s.pricing.costSources}
+                rowKey={(r) => r.source ?? 'unpriced'}
+              />
             </section>
             <section className="card">
               <h2>Models without a price</h2>

@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type { Filters, ModelRow, ToolRow } from './api-types';
 import { all, buildWhere } from './query-filters';
+import { costSourcesByModel } from './query-sources';
 import { latestRates } from './rates';
 import { rowToTotals, TOTALS_COLS, type TotalsRow } from './query-totals';
 import type { PriceTier } from './types';
@@ -36,6 +37,8 @@ export function models(db: Database, f: Filters): ModelRow[] {
     agentsByModel.set(a.model, list);
   }
 
+  const sourcesByModel = costSourcesByModel(db, f);
+
   return rows.map((r) => ({
     ...rowToTotals(r),
     model: r.model,
@@ -44,6 +47,7 @@ export function models(db: Database, f: Filters): ModelRow[] {
     agents: agentsByModel.get(r.model) ?? [],
     avgContext: r.avg_context ?? 0,
     rates: latestRates(db, r.model, r.tier),
+    costSources: sourcesByModel.get(r.model) ?? [],
   }));
 }
 

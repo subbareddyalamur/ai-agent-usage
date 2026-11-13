@@ -85,6 +85,15 @@ export interface SessionDetail {
   steps: StepRow[];
 }
 
+import type { PriceSource } from './types';
+
+/** How the events of a model were priced. */
+export interface CostSourceShare {
+  source: PriceSource | null; // null = unpriced
+  events: number;
+  costUsd: number;
+}
+
 export interface ModelRow extends Totals {
   model: string;
   priced: boolean;
@@ -93,6 +102,8 @@ export interface ModelRow extends Totals {
   avgContext: number;
   /** Live price per 1M tokens from the newest snapshot (null if unpriced). */
   rates: { input: number; output: number; cacheRead: number; cacheWrite5m: number; cacheWrite1h: number } | null;
+  /** Events of this model per price source in the filtered range (largest first). */
+  costSources: CostSourceShare[];
 }
 
 export interface ToolRow {
@@ -148,6 +159,8 @@ export interface StatusInfo {
     latestSnapshotAt: number | null;
     snapshots: number;
     modelsPriced: number;
+    /** All events (not range filtered) grouped by where their cost came from. */
+    costSources: CostSourceShare[];
     stale: boolean;
     lastError?: string;
   };

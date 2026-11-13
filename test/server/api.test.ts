@@ -24,7 +24,7 @@ function makeDeps(over: Partial<ApiDeps> = {}): { deps: ApiDeps; calls: string[]
     tools: () => [],
     cache: (f) => { calls.push(`cache:${JSON.stringify(f)}`); return emptyCache; },
     insights: () => [],
-    status: () => ({ adapters: [], pricing: { latestSnapshotAt: null, snapshots: 0, modelsPriced: 0, stale: true }, unmappedModels: [], db: { path: ':memory:', sizeBytes: 0 } }),
+    status: () => ({ adapters: [], pricing: { latestSnapshotAt: null, snapshots: 0, modelsPriced: 0, costSources: [], stale: true }, unmappedModels: [], db: { path: ':memory:', sizeBytes: 0 } }),
     refresh: async () => { calls.push('refresh'); },
     ...over,
   };

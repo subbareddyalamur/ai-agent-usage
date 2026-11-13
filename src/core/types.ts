@@ -92,12 +92,23 @@ export interface Adapter {
 
 export type PriceTier = 'regional' | 'global';
 
+/** Where a cost came from, best first. */
+export type PriceSource =
+  | 'aws-price-list'
+  | 'aws-pricing-page'
+  | 'models.dev'
+  | 'official'
+  | 'free-model'
+  | 'agent-reported';
+
 export interface ResolvedModel {
   /** Canonical display name, e.g. "Claude Sonnet 5.5". Falls back to a normalised raw id when unknown. */
   canonical: string;
   /** True when a price exists for it in the current or any past price snapshot. */
   priced: boolean;
   tier: PriceTier;
+  /** Which source supplied the price; undefined when unpriced. */
+  source?: PriceSource;
 }
 
 /** The part of an event the pricer needs. */
@@ -117,5 +128,5 @@ export interface PricingService {
   /** Maps a raw model id (alias, Bedrock id, ARN...) to a canonical priced model. Results are cached. */
   resolveModel(raw: string, hint?: { awsProfile?: string; provider?: string }): Promise<ResolvedModel>;
   /** Cost in USD using the snapshot in effect at input.ts. null = unpriced. approx=true when ts predates the first snapshot. */
-  priceEvent(model: ResolvedModel, input: PriceInput): { costUsd: number | null; approx: boolean };
+  priceEvent(model: ResolvedModel, input: PriceInput): { costUsd: number | null; approx: boolean; source?: PriceSource };
 }

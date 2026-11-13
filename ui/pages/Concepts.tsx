@@ -11,6 +11,7 @@ const SECTIONS: ReadonlyArray<{ id: string; title: string }> = [
   { id: 'cache-misses', title: 'Cache misses: the six reasons' },
   { id: 'context-growth', title: 'Context growth and compaction' },
   { id: 'pricing-tiers', title: 'Pricing tiers and unpriced models' },
+  { id: 'price-sources', title: 'Where prices come from' },
   { id: 'tools', title: 'Tools and MCP' },
   { id: 'model-mix', title: 'Choosing the right model' },
 ];
@@ -108,8 +109,23 @@ export function Concepts({ section, refreshKey }: { section: string | null; refr
         <ul>
           <li><strong>Regional vs global.</strong> The price list has two rates per model. Model ids starting with <code>global.</code> use the global rate; <code>us.</code> ids and others use the regional rate. The Models page shows which tier each model used.</li>
           <li><strong>Price history.</strong> Every price list the app fetches is kept. Each call is costed with the list that was current when it happened, so old usage is not re-priced by later changes. Usage older than the first saved list is marked approximate.</li>
-          <li id="unpriced" tabIndex={-1}><strong>Unpriced models.</strong> If a model id cannot be matched to the price list (a local model, a brand-new model, an unresolved ARN), its tokens are still counted but its cost is left out and labelled unpriced, never shown as $0. It is resolved automatically once the price list or ARN lookup can match it.</li>
+          <li id="unpriced" tabIndex={-1}><strong>Unpriced models.</strong> If a model id cannot be matched to the price list (a local model, a brand-new model, an unresolved ARN), its tokens are still counted but its cost is left out and labelled unpriced, never shown as $0. It is resolved automatically once a price source or ARN lookup can match it. See <a href={route.hrefFor(['concepts'], { section: 'price-sources' })}>where prices come from</a>.</li>
         </ul>
+      </section>
+
+      <section id="price-sources" tabIndex={-1}>
+        <h2>Where prices come from</h2>
+        <p>Every call is priced from the first source that knows the model, in this order. Which one was used is shown per model on the Models page and in total on the Status page.</p>
+        <ol>
+          <li><strong>AWS price list.</strong> The public AWS Bedrock price list (list prices, no credentials needed).</li>
+          <li><strong>AWS pricing page.</strong> The public Bedrock pricing page, for brand-new models the price list does not have yet.</li>
+          <li><strong>Official price list.</strong> Google, Anthropic, OpenAI, and xAI pricing pages, re-checked daily. These rates win over models.dev. A later change prices new calls only; calls already priced keep the rate in effect when they were priced.</li>
+          <li><strong>models.dev.</strong> A community-maintained price database for models the official pages do not list (and for other providers). Third-party data, so treat it as less authoritative.</li>
+          <li><strong>Free models.</strong> Models whose id says free, and local models, cost $0.</li>
+          <li><strong>Agent-reported.</strong> If no price is found anywhere, the agent's own cost number is used and marked approximate. It is replaced automatically if a price list later gains the model.</li>
+          <li><strong>Unknown.</strong> Otherwise the price is unknown. Tokens are still counted, but the cost is left out of totals and is <strong>never counted as $0</strong>.</li>
+        </ol>
+        <p>All costs are estimates at list price, not your invoice.</p>
       </section>
 
       <section id="tools" tabIndex={-1}>

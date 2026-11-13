@@ -144,3 +144,6 @@ tbody tr:hover { background: #ffffff08; }
 .reason.unavoidable { color: var(--muted); }
 .explain { color: var(--muted); font-size: 12px; max-width: 520px; }
 .stepmark { cursor: help; }
+
+.tag.source { white-space: nowrap; }
+.tag.source.neutral { color: var(--text); }

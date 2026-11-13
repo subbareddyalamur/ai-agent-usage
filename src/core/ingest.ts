@@ -3,6 +3,8 @@ import type {
   Adapter,
   AdapterState,
   IngestItem,
+  PriceInput,
+  PriceSource,
   PricingService,
   ResolvedModel,
   UsageEvent,
@@ -69,6 +71,24 @@ async function resolveAll(
   }
 }
 
+/**
+ * Price from the sources (best first); when none knows the model, fall back to the cost the agent
+ * itself recorded for the call. A price list entry always wins over an agent-reported number.
+ */
+function priceWithFallback(
+  pricing: PricingService,
+  model: ResolvedModel,
+  input: PriceInput,
+  reportedCostUsd: number | undefined | null,
+): { costUsd: number | null; approx: boolean; source?: PriceSource } {
+  const p = pricing.priceEvent(model, input);
+  if (p.costUsd !== null) return p;
+  if (typeof reportedCostUsd === 'number' && reportedCostUsd > 0) {
+    return { costUsd: reportedCostUsd, approx: true, source: 'agent-reported' };
+  }
+  return p;
+}
+
 function writeBatch(
   db: Database,
   items: readonly IngestItem[],
@@ -81,8 +101,8 @@ function writeBatch(
       id, agent, session_id, project, ts, provider, model_raw, model, priced, tier,
       input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
       cache_write_5m_tokens, cache_write_1h_tokens, is_subagent, kind,
-      reported_cost_usd, aws_profile_hint, cost_usd, cost_approx, ingested_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      reported_cost_usd, aws_profile_hint, cost_usd, cost_approx, cost_source, ingested_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET
       project = excluded.project, ts = excluded.ts, provider = excluded.provider,
       model_raw = excluded.model_raw, model = excluded.model, priced = excluded.priced,
@@ -95,7 +115,7 @@ function writeBatch(
       reported_cost_usd = excluded.reported_cost_usd,
       aws_profile_hint = excluded.aws_profile_hint,
       cost_usd = excluded.cost_usd, cost_approx = excluded.cost_approx,
-      ingested_at = excluded.ingested_at`);
+      cost_source = excluded.cost_source, ingested_at = excluded.ingested_at`);
   const upsertTool = db.prepare(`
     INSERT INTO tool_calls (agent, call_id, event_id, name, result_bytes, is_error)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -116,13 +136,13 @@ function writeBatch(
       if (item.type === 'event') {
         const e = item.event;
         const resolved = memo.get(modelKey(e)) as ResolvedModel;
-        const { costUsd, approx } = pricing.priceEvent(resolved, e);
+        const priced = priceWithFallback(pricing, resolved, e, e.reportedCostUsd);
         upsertEvent.run(
           e.id, e.agent, e.sessionId, e.project ?? null, e.ts, e.provider ?? null,
           e.modelRaw, resolved.canonical, resolved.priced ? 1 : 0, resolved.tier,
           e.inputTokens, e.outputTokens, e.reasoningTokens, e.cacheReadTokens,
           e.cacheWrite5mTokens, e.cacheWrite1hTokens, e.isSubagent ? 1 : 0, e.kind,
-          e.reportedCostUsd ?? null, e.awsProfileHint ?? null, costUsd, approx ? 1 : 0, now,
+          e.reportedCostUsd ?? null, e.awsProfileHint ?? null, priced.costUsd, priced.approx ? 1 : 0, priced.source ?? null, now,
         );
         for (const t of e.tools) {
           upsertTool.run(e.agent, t.callId, e.id, t.name, t.resultBytes ?? null, t.isError ? 1 : 0);
@@ -246,19 +266,21 @@ export async function repriceUnpriced(db: Database, pricing: PricingService): Pr
   const rows = db
     .query(
       `SELECT id, model_raw, provider, aws_profile_hint, ts, input_tokens, output_tokens, reasoning_tokens,
-              cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens
-       FROM events WHERE cost_usd IS NULL`,
+              cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens, reported_cost_usd,
+              cost_usd, cost_source
+       FROM events WHERE cost_usd IS NULL OR cost_source = 'agent-reported'`,
     )
     .all() as Array<{
     id: string; model_raw: string; provider: string | null; aws_profile_hint: string | null; ts: number;
     input_tokens: number; output_tokens: number; reasoning_tokens: number;
     cache_read_tokens: number; cache_write_5m_tokens: number; cache_write_1h_tokens: number;
+    reported_cost_usd: number | null; cost_usd: number | null; cost_source: string | null;
   }>;
   if (rows.length === 0) return 0;
 
   const memo = new Map<string, ResolvedModel>();
   const update = db.prepare(
-    `UPDATE events SET model = ?, priced = ?, tier = ?, cost_usd = ?, cost_approx = ? WHERE id = ?`,
+    `UPDATE events SET model = ?, priced = ?, tier = ?, cost_usd = ?, cost_approx = ?, cost_source = ? WHERE id = ?`,
   );
   let changed = 0;
   for (const r of rows) {
@@ -268,12 +290,14 @@ export async function repriceUnpriced(db: Database, pricing: PricingService): Pr
   db.transaction(() => {
     for (const r of rows) {
       const resolved = memo.get(`${r.aws_profile_hint ?? ''}\u0000${r.provider ?? ''}\u0000${r.model_raw}`) as ResolvedModel;
-      const { costUsd, approx } = pricing.priceEvent(resolved, {
+      const { costUsd, approx, source } = priceWithFallback(pricing, resolved, {
         ts: r.ts, inputTokens: r.input_tokens, outputTokens: r.output_tokens,
         reasoningTokens: r.reasoning_tokens, cacheReadTokens: r.cache_read_tokens,
         cacheWrite5mTokens: r.cache_write_5m_tokens, cacheWrite1hTokens: r.cache_write_1h_tokens,
-      });
-      update.run(resolved.canonical, resolved.priced ? 1 : 0, resolved.tier, costUsd, approx ? 1 : 0, r.id);
+      }, r.reported_cost_usd);
+      const unchanged = costUsd === r.cost_usd && (source ?? null) === r.cost_source;
+      if (unchanged) continue;
+      update.run(resolved.canonical, resolved.priced ? 1 : 0, resolved.tier, costUsd, approx ? 1 : 0, source ?? null, r.id);
       if (costUsd !== null) changed++;
     }
   })();

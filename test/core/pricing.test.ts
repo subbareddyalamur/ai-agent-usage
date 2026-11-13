@@ -21,7 +21,7 @@ describe('refreshIfStale', () => {
     expect(r.refreshed).toBe(true);
     expect(h.fetchCalls).toEqual([PRICE_LIST_URL]);
     expect(count(h.db, 'price_snapshots')).toBe(1);
-    expect(count(h.db, 'prices')).toBe(5 + 2); // Sonnet 5.5 + default DeepSeek rows
+    expect(count(h.db, 'prices')).toBe(5 + 2 + 4); // Sonnet 5.5 + default DeepSeek rows + default page-only model (global + US CRIS)
     expect(h.db.query('SELECT fetched_at f, last_checked_at c, publication_date p FROM price_snapshots').get()).toEqual({ f: T0, c: T0, p: '2026-10-01T00:00:00Z' });
   });
 
@@ -56,16 +56,19 @@ describe('refreshIfStale', () => {
     const r = await h.svc.refreshIfStale();
     expect(r).toEqual({ refreshed: true, snapshotId: 2 });
     expect(count(h.db, 'price_snapshots')).toBe(2);
-    expect(count(h.db, 'prices')).toBe(14);
+    expect(count(h.db, 'prices')).toBe(22);
   });
 
   test('failures never throw, keep the last snapshot and record the error', async () => {
     const h = harness(openDb(':memory:'), priceDoc([SONNET]));
     await h.svc.refreshIfStale();
-    h.clock.t = T0 + 2 * DAY;
+    const nextAttempt = async () => {
+      h.clock.t += 2 * DAY; // past both the daily and the retry throttle
+      return h.svc.refreshIfStale();
+    };
 
     h.setStatus(503);
-    const failed = await h.svc.refreshIfStale();
+    const failed = await nextAttempt();
     expect(failed.refreshed).toBe(false);
     expect(failed.error).toContain('price list fetch failed: HTTP 503');
     expect(pricingLastError(h.db)).toContain('503');
@@ -73,23 +76,23 @@ describe('refreshIfStale', () => {
     h.setStatus(200);
     h.setBody('{not json');
     h.setStatus(503, 'bedrock');
-    expect((await h.svc.refreshIfStale()).error).toContain('foundation-models');
+    expect((await nextAttempt()).error).toContain('foundation-models');
     h.setBody(JSON.stringify({ products: {}, terms: { OnDemand: {} } }));
-    expect((await h.svc.refreshIfStale()).error).toContain('no token prices');
+    expect((await nextAttempt()).error).toContain('no token prices');
     h.setBody(JSON.stringify([1]));
-    expect((await h.svc.refreshIfStale()).error).toBeDefined();
+    expect((await nextAttempt()).error).toBeDefined();
     h.setStatus(200);
 
     expect(count(h.db, 'price_snapshots')).toBe(1);
     h.setDoc(priceDoc([SONNET]));
-    await h.svc.refreshIfStale();
+    await nextAttempt();
     expect(pricingLastError(h.db)).toBeUndefined();
   });
 
   test('network exceptions are caught', async () => {
     const db = openDb(':memory:');
     const svc = createPricingService(db, { fetch: (async () => { throw new Error('offline'); }) as unknown as typeof fetch });
-    expect(await svc.refreshIfStale()).toEqual({ refreshed: false, error: 'foundation-models: offline; bedrock: offline' });
+    expect(await svc.refreshIfStale()).toEqual({ refreshed: false, error: 'foundation-models: offline; bedrock: offline; pricing-page: offline; models.dev: offline; google: offline; anthropic: offline; openai: offline; xai: offline' });
   });
 
   test('concurrent calls share one fetch', async () => {
@@ -106,7 +109,7 @@ describe('refreshIfStale', () => {
     expect(latestRates(h.db, 'Claude Sonnet 5.5', 'global')?.input).toBe(2);
     const status = pricingStatus(h.db, T0 + 1000);
     expect(status).toMatchObject({ snapshots: 1, stale: false, latestSnapshotAt: T0 });
-    expect(status.modelsPriced).toBe(6);
+    expect(status.modelsPriced).toBe(7);
   });
 });
 
@@ -135,14 +138,14 @@ describe('priceEvent', () => {
   test('uses the snapshot in effect at the event time', async () => {
     const { h, model } = await twoSnapshots();
     const at = (ts: number) => h.svc.priceEvent(model, { ...zero, ts, inputTokens: M });
-    expect(at(T0 + 5 * DAY)).toEqual({ costUsd: 2.2, approx: false });
-    expect(at(T0 + 10 * DAY)).toEqual({ costUsd: 3.3, approx: false });
-    expect(at(T0 + 30 * DAY)).toEqual({ costUsd: 3.3, approx: false });
+    expect(at(T0 + 5 * DAY)).toMatchObject({ costUsd: 2.2, approx: false });
+    expect(at(T0 + 10 * DAY)).toMatchObject({ costUsd: 3.3, approx: false });
+    expect(at(T0 + 30 * DAY)).toMatchObject({ costUsd: 3.3, approx: false });
   });
 
   test('events before the first snapshot use the earliest one and are flagged approximate', async () => {
     const { h, model } = await twoSnapshots();
-    expect(h.svc.priceEvent(model, { ...zero, ts: T0 - 90 * DAY, inputTokens: M })).toEqual({ costUsd: 2.2, approx: true });
+    expect(h.svc.priceEvent(model, { ...zero, ts: T0 - 90 * DAY, inputTokens: M })).toMatchObject({ costUsd: 2.2, approx: true });
   });
 
   test('global tier uses global rates, falling back (approx) to regional when absent', async () => {
@@ -157,15 +160,15 @@ describe('priceEvent', () => {
     await h.svc.refreshIfStale();
     const g = await h.svc.resolveModel('global.anthropic.claude-sonnet-5-5');
     expect(g.tier).toBe('global');
-    expect(h.svc.priceEvent(g, { ...zero, inputTokens: M })).toEqual({ costUsd: 2, approx: false });
-    expect(h.svc.priceEvent({ canonical: 'Old Model', priced: true, tier: 'global' }, { ...zero, inputTokens: M })).toEqual({ costUsd: 3, approx: true });
+    expect(h.svc.priceEvent(g, { ...zero, inputTokens: M })).toMatchObject({ costUsd: 2, approx: false });
+    expect(h.svc.priceEvent({ canonical: 'Old Model', priced: true, tier: 'global' }, { ...zero, inputTokens: M })).toMatchObject({ costUsd: 3, approx: true });
   });
 
   test('falls back to another region when the default region has no price', async () => {
     const h = harness(openDb(':memory:'), priceDoc([{ model: 'Only West', rates: { input: 1, output: 2 }, region: 'us-west-2' }]));
     await h.svc.refreshIfStale();
     const r = h.svc.priceEvent({ canonical: 'Only West', priced: true, tier: 'regional' }, { ...zero, inputTokens: M });
-    expect(r).toEqual({ costUsd: 1, approx: true });
+    expect(r).toMatchObject({ costUsd: 1, approx: true });
   });
 
   test('a model missing from the in-effect snapshot is priced from the nearest snapshot that has it', async () => {
@@ -175,7 +178,7 @@ describe('priceEvent', () => {
     h.clock.t = T0 + 10 * DAY;
     await h.svc.refreshIfStale();
     const model = { canonical: 'Late Model', priced: true, tier: 'regional' as const };
-    expect(h.svc.priceEvent(model, { ...zero, ts: T0 + 1 * DAY, inputTokens: M })).toEqual({ costUsd: 7, approx: true });
+    expect(h.svc.priceEvent(model, { ...zero, ts: T0 + 1 * DAY, inputTokens: M })).toMatchObject({ costUsd: 7, approx: true });
   });
 
   test('deprecated models stay priceable from the last snapshot that listed them', async () => {
@@ -185,8 +188,8 @@ describe('priceEvent', () => {
     h.clock.t = T0 + 10 * DAY;
     await h.svc.refreshIfStale();
     const model = await h.svc.resolveModel('anthropic.claude-3-haiku-20240307-v1:0');
-    expect(model).toEqual({ canonical: 'Claude 3 Haiku', priced: true, tier: 'regional' });
-    expect(h.svc.priceEvent(model, { ...zero, ts: T0 + 20 * DAY, inputTokens: M })).toEqual({ costUsd: 0.25, approx: true });
+    expect(model).toMatchObject({ canonical: 'Claude 3 Haiku', priced: true, tier: 'regional' });
+    expect(h.svc.priceEvent(model, { ...zero, ts: T0 + 20 * DAY, inputTokens: M })).toMatchObject({ costUsd: 0.25, approx: true });
   });
 
   test('1h cache writes fall back to the 5m rate only when no 1h rate exists', async () => {
@@ -199,25 +202,25 @@ describe('priceEvent', () => {
     );
     await h.svc.refreshIfStale();
     const cw1h = { ...zero, cacheWrite1hTokens: M };
-    expect(h.svc.priceEvent({ canonical: 'With1h', priced: true, tier: 'regional' }, cw1h)).toEqual({ costUsd: 2, approx: false });
-    expect(h.svc.priceEvent({ canonical: 'No1h', priced: true, tier: 'regional' }, cw1h)).toEqual({ costUsd: 1.25, approx: false });
+    expect(h.svc.priceEvent({ canonical: 'With1h', priced: true, tier: 'regional' }, cw1h)).toMatchObject({ costUsd: 2, approx: false });
+    expect(h.svc.priceEvent({ canonical: 'No1h', priced: true, tier: 'regional' }, cw1h)).toMatchObject({ costUsd: 1.25, approx: false });
   });
 
   test('missing cache rates fall back to the input rate and mark the estimate approximate', async () => {
     const h = harness(openDb(':memory:'), priceDoc([{ model: 'NoCache', rates: { input: 1, output: 2 } }]));
     await h.svc.refreshIfStale();
     const m = { canonical: 'NoCache', priced: true, tier: 'regional' as const };
-    expect(h.svc.priceEvent(m, { ...zero, cacheReadTokens: M })).toEqual({ costUsd: 1, approx: true });
-    expect(h.svc.priceEvent(m, { ...zero, cacheWrite1hTokens: M })).toEqual({ costUsd: 1, approx: true });
-    expect(h.svc.priceEvent(m, { ...zero, inputTokens: M })).toEqual({ costUsd: 1, approx: false });
+    expect(h.svc.priceEvent(m, { ...zero, cacheReadTokens: M })).toMatchObject({ costUsd: 1, approx: true });
+    expect(h.svc.priceEvent(m, { ...zero, cacheWrite1hTokens: M })).toMatchObject({ costUsd: 1, approx: true });
+    expect(h.svc.priceEvent(m, { ...zero, inputTokens: M })).toMatchObject({ costUsd: 1, approx: false });
   });
 
   test('unpriced or unknown models, and an empty price book, give null', async () => {
     const h = harness(openDb(':memory:'), priceDoc([SONNET]));
-    expect(h.svc.priceEvent({ canonical: 'x', priced: true, tier: 'regional' }, zero)).toEqual({ costUsd: null, approx: false });
+    expect(h.svc.priceEvent({ canonical: 'x', priced: true, tier: 'regional' }, zero)).toMatchObject({ costUsd: null, approx: false });
     await h.svc.refreshIfStale();
-    expect(h.svc.priceEvent({ canonical: 'x', priced: false, tier: 'regional' }, zero)).toEqual({ costUsd: null, approx: false });
-    expect(h.svc.priceEvent({ canonical: 'Not In Book', priced: true, tier: 'regional' }, zero)).toEqual({ costUsd: null, approx: false });
+    expect(h.svc.priceEvent({ canonical: 'x', priced: false, tier: 'regional' }, zero)).toMatchObject({ costUsd: null, approx: false });
+    expect(h.svc.priceEvent({ canonical: 'Not In Book', priced: true, tier: 'regional' }, zero)).toMatchObject({ costUsd: null, approx: false });
   });
 
   test('rows without both input and output rates are not usable', async () => {

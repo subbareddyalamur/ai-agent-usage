@@ -54,7 +54,7 @@ describe('resolveModel: ids seen in the real agent data', () => {
   ];
   test.each(priced)('%s -> %s (%s)', async (raw, canonical, tier) => {
     const h = await ready();
-    expect(await h.svc.resolveModel(raw)).toEqual({ canonical, priced: true, tier });
+    expect(await h.svc.resolveModel(raw)).toMatchObject({ canonical, priced: true, tier });
   });
 
   const unpriced: Array<[string, string]> = [
@@ -67,7 +67,7 @@ describe('resolveModel: ids seen in the real agent data', () => {
   ];
   test.each(unpriced)('%s stays unpriced as %s', async (raw, canonical) => {
     const h = await ready();
-    expect(await h.svc.resolveModel(raw)).toEqual({ canonical, priced: false, tier: 'regional' });
+    expect(await h.svc.resolveModel(raw)).toMatchObject({ canonical, priced: false, tier: 'regional' });
   });
 });
 
@@ -80,7 +80,7 @@ describe('resolveModel: caching and retries', () => {
       { raw: 'claude-sonnet-5', canonical: 'Claude Sonnet 5', priced: 1 },
     ]);
     const fresh = createPricingService(h.db, { now: () => h.clock.t });
-    expect(await fresh.resolveModel('claude-sonnet-5')).toEqual({ canonical: 'Claude Sonnet 5', priced: true, tier: 'regional' });
+    expect(await fresh.resolveModel('claude-sonnet-5')).toMatchObject({ canonical: 'Claude Sonnet 5', priced: true, tier: 'regional' });
   });
 
   test('a model unknown before the first price fetch becomes priced after the next snapshot', async () => {
@@ -88,7 +88,7 @@ describe('resolveModel: caching and retries', () => {
     expect((await h.svc.resolveModel('claude-sonnet-5')).priced).toBe(false);
     h.clock.t = T0 + DAY;
     await h.svc.refreshIfStale();
-    expect(await h.svc.resolveModel('claude-sonnet-5')).toEqual({ canonical: 'Claude Sonnet 5', priced: true, tier: 'regional' });
+    expect(await h.svc.resolveModel('claude-sonnet-5')).toMatchObject({ canonical: 'Claude Sonnet 5', priced: true, tier: 'regional' });
   });
 
   test('unpriced results are retried only when a newer snapshot exists', async () => {
@@ -98,7 +98,7 @@ describe('resolveModel: caching and retries', () => {
     h.setDoc(priceDoc([...NAMES, 'Claude Nova 9'].map((model) => ({ model, rates: { input: 1, output: 5 } }))));
     h.clock.t = T0 + 6 * DAY;
     await h.svc.refreshIfStale();
-    expect(await h.svc.resolveModel('claude-nova-9')).toEqual({ canonical: 'Claude Nova 9', priced: true, tier: 'regional' });
+    expect(await h.svc.resolveModel('claude-nova-9')).toMatchObject({ canonical: 'Claude Nova 9', priced: true, tier: 'regional' });
   });
 });
 
@@ -119,7 +119,7 @@ describe('resolveModel: application inference profile ARNs', () => {
     const h = harness(openDb(':memory:'), book, { exec: e.exec });
     await h.svc.refreshIfStale();
     const r = await h.svc.resolveModel(AIP, { awsProfile: 'work' });
-    expect(r).toEqual({ canonical: 'Claude Sonnet 5', priced: true, tier: 'regional' });
+    expect(r).toMatchObject({ canonical: 'Claude Sonnet 5', priced: true, tier: 'regional' });
     expect(e.calls[0]).toContain('work');
     await h.svc.resolveModel(AIP, { awsProfile: 'work' });
     expect(e.calls).toHaveLength(1);
@@ -129,19 +129,19 @@ describe('resolveModel: application inference profile ARNs', () => {
     const e = okExec('zai.glm-5-v1:0');
     const h = harness(openDb(':memory:'), book, { exec: e.exec });
     await h.svc.refreshIfStale();
-    expect(await h.svc.resolveModel(AIP)).toEqual({ canonical: 'glm-5', priced: false, tier: 'regional' });
+    expect(await h.svc.resolveModel(AIP)).toMatchObject({ canonical: 'glm-5', priced: false, tier: 'regional' });
   });
 
   test('unresolvable ARN (no aws / no creds) is labelled, unpriced, and retried after an hour', async () => {
     const h = harness(openDb(':memory:'), book);
     await h.svc.refreshIfStale();
-    expect(await h.svc.resolveModel(AIP)).toEqual({ canonical: 'bedrock-profile/abcd1234efgh', priced: false, tier: 'regional' });
+    expect(await h.svc.resolveModel(AIP)).toMatchObject({ canonical: 'bedrock-profile/abcd1234efgh', priced: false, tier: 'regional' });
     expect(h.db.query('SELECT COUNT(*) c FROM model_cache').get()).toEqual({ c: 0 });
 
     const e = okExec('anthropic.claude-opus-5-v1:0');
     const later = harness(h.db, book, { exec: e.exec });
     later.clock.t = T0 + 2 * 3600 * 1000;
-    expect(await later.svc.resolveModel(AIP)).toEqual({ canonical: 'Claude Opus 5', priced: true, tier: 'regional' });
+    expect(await later.svc.resolveModel(AIP)).toMatchObject({ canonical: 'Claude Opus 5', priced: true, tier: 'regional' });
   });
 
   test('system profile ARNs resolve without aws', async () => {
@@ -170,7 +170,7 @@ describe('resolveModel: ARN through automatic profile discovery', () => {
     };
     const h = harness(openDb(':memory:'), book, { exec, home, env: { AWS_PROFILE: 'dev', AWS_ACCESS_KEY_ID: 'ASIASTALE' } });
     await h.svc.refreshIfStale();
-    expect(await h.svc.resolveModel(AIP)).toEqual({ canonical: 'Claude Opus 5', priced: true, tier: 'regional' });
+    expect(await h.svc.resolveModel(AIP)).toMatchObject({ canonical: 'Claude Opus 5', priced: true, tier: 'regional' });
     expect(calls.filter((a) => a[0] === 'bedrock').map((a) => a[a.indexOf('--profile') + 1])).toEqual(['work']);
   });
 });
@@ -190,8 +190,8 @@ describe('resolveModel: free and local models cost $0', () => {
   ])('%s (%p) is priced at $0 as %s', async (raw, provider, canonical) => {
     const h = harness(openDb(':memory:'), book);
     const m = await h.svc.resolveModel(raw, { provider });
-    expect(m).toEqual({ canonical, priced: true, tier: 'regional' });
-    expect(h.svc.priceEvent(m, ev)).toEqual({ costUsd: 0, approx: false });
+    expect(m).toMatchObject({ canonical, priced: true, tier: 'regional' });
+    expect(h.svc.priceEvent(m, ev)).toMatchObject({ costUsd: 0, approx: false });
   });
 
   test('works before any price list has been fetched and does not touch model_cache', async () => {

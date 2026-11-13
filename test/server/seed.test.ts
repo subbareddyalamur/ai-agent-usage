@@ -43,4 +43,13 @@ describe('seedDemo', () => {
     expect(one<{ n: number }>(db, "SELECT COUNT(*) n FROM events WHERE agent = 'cowork'").n).toBeGreaterThan(0);
     expect(one<{ n: number }>(db, 'SELECT COUNT(*) n FROM events WHERE cost_approx = 1').n).toBeGreaterThan(0);
   });
+
+  test('the demo shows every price source, including agent-reported and unpriced', () => {
+    const { db } = seeded();
+    const rows = db.query("SELECT COALESCE(cost_source, 'unpriced') s FROM events GROUP BY 1 ORDER BY 1").all() as Array<{ s: string }>;
+    expect(rows.map((r) => r.s)).toEqual(['agent-reported', 'aws-price-list', 'aws-pricing-page', 'free-model', 'models.dev', 'unpriced']);
+    expect(one<{ n: number }>(db, "SELECT COUNT(*) n FROM events WHERE cost_source = 'agent-reported' AND reported_cost_usd IS NULL").n).toBe(0);
+    expect(one<{ n: number }>(db, "SELECT COUNT(*) n FROM events WHERE cost_source IS NULL AND cost_usd IS NOT NULL").n).toBe(0);
+  });
 });
+

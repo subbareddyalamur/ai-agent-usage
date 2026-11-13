@@ -1,5 +1,6 @@
 // Generates a realistic DEMO database through the real schema. Prices below are illustrative, not AWS's.
 import type { Database } from 'bun:sqlite';
+import type { PriceSource } from '../core/types';
 import { existsSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defaultDbPath, openDb } from '../core/db';
@@ -25,17 +26,27 @@ interface DemoModel {
   raw: string;
   provider: string;
   tier: 'regional' | 'global';
-  /** null = deliberately unpriced (e.g. a local Ollama model). */
+  /** null rates + 'free-model' = costs nothing; null rates + null source = deliberately unpriced. */
   rates: Rates | null;
+  /** Where the demo price comes from; only 'aws-price-list' models get rows in the demo price snapshots. */
+  source: PriceSource | null;
 }
 
 const MODELS: Record<string, DemoModel> = {
-  sonnet55: { canonical: 'Claude Sonnet 5.5', raw: 'us.anthropic.claude-sonnet-5-5', provider: 'amazon-bedrock', tier: 'regional', rates: { input: 2.2, output: 11, cacheRead: 0.11, cw5m: 2.75, cw1h: 4.4 } },
-  opus55: { canonical: 'Claude Opus 5.5', raw: 'us.anthropic.claude-opus-5-5', provider: 'amazon-bedrock', tier: 'regional', rates: { input: 5.5, output: 27.5, cacheRead: 0.55, cw5m: 6.875, cw1h: 11 } },
-  haiku55: { canonical: 'Claude Haiku 5.5', raw: 'us.anthropic.claude-haiku-5-5', provider: 'amazon-bedrock', tier: 'regional', rates: { input: 1.1, output: 5.5, cacheRead: 0.11, cw5m: 1.375, cw1h: 2.2 } },
-  sonnet46: { canonical: 'Claude Sonnet 4.6', raw: 'claude-sonnet-4-6', provider: 'amazon-bedrock', tier: 'regional', rates: { input: 3.3, output: 16.5, cacheRead: 0.33, cw5m: 4.125, cw1h: 6.6 } },
-  opus48: { canonical: 'Claude Opus 4.8', raw: 'global.anthropic.claude-opus-4-8', provider: 'amazon-bedrock', tier: 'global', rates: { input: 5, output: 25, cacheRead: 0.5, cw5m: 6.25, cw1h: 10 } },
-  gemma: { canonical: 'gemma3:1b', raw: 'gemma3:1b', provider: 'ollama', tier: 'regional', rates: null },
+  sonnet55: { canonical: 'Claude Sonnet 5.5', raw: 'us.anthropic.claude-sonnet-5-5', provider: 'amazon-bedrock', tier: 'regional', rates: { input: 2.2, output: 11, cacheRead: 0.11, cw5m: 2.75, cw1h: 4.4 }, source: 'aws-price-list' },
+  opus55: { canonical: 'Claude Opus 5.5', raw: 'us.anthropic.claude-opus-5-5', provider: 'amazon-bedrock', tier: 'regional', rates: { input: 5.5, output: 27.5, cacheRead: 0.55, cw5m: 6.875, cw1h: 11 }, source: 'aws-price-list' },
+  haiku55: { canonical: 'Claude Haiku 5.5', raw: 'us.anthropic.claude-haiku-5-5', provider: 'amazon-bedrock', tier: 'regional', rates: { input: 1.1, output: 5.5, cacheRead: 0.11, cw5m: 1.375, cw1h: 2.2 }, source: 'aws-price-list' },
+  sonnet46: { canonical: 'Claude Sonnet 4.6', raw: 'claude-sonnet-4-6', provider: 'amazon-bedrock', tier: 'regional', rates: { input: 3.3, output: 16.5, cacheRead: 0.33, cw5m: 4.125, cw1h: 6.6 }, source: 'aws-price-list' },
+  opus48: { canonical: 'Claude Opus 4.8', raw: 'global.anthropic.claude-opus-4-8', provider: 'amazon-bedrock', tier: 'global', rates: { input: 5, output: 25, cacheRead: 0.5, cw5m: 6.25, cw1h: 10 }, source: 'aws-price-list' },
+  gemma: { canonical: 'gemma3:1b', raw: 'gemma3:1b', provider: 'ollama', tier: 'regional', rates: null, source: 'free-model' },
+  // Not on Bedrock: priced from the third-party models.dev database.
+  gpt5nano: { canonical: 'gpt-5-nano', raw: 'gpt-5-nano', provider: 'opencode', tier: 'regional', rates: { input: 0.05, output: 0.4, cacheRead: 0.005, cw5m: 0.05, cw1h: 0.05 }, source: 'models.dev' },
+  // A new Bedrock model the bulk price list does not have yet: read from the AWS pricing page.
+  glm53: { canonical: 'GLM 5.3', raw: 'us.zai.glm-5.3', provider: 'amazon-bedrock', tier: 'regional', rates: { input: 1.848, output: 5.808, cacheRead: 0.3432, cw5m: 2.31, cw1h: 2.31 }, source: 'aws-pricing-page' },
+  // No price list knows it, but the agent recorded its own cost.
+  glm5: { canonical: 'z-ai/glm5', raw: 'z-ai/glm5', provider: 'nvidia', tier: 'regional', rates: { input: 1, output: 3.2, cacheRead: 0.2, cw5m: 1, cw1h: 1 }, source: 'agent-reported' },
+  // No public price anywhere: shown as price unknown.
+  mystery: { canonical: 'bed-claude-son5', raw: 'bed-claude-son5', provider: 'amazon-bedrock', tier: 'regional', rates: null, source: null },
 };
 
 const PROJECTS = ['/Users/demo/work/api-gateway', '/Users/demo/work/web-dashboard', '/Users/demo/work/infra-terraform', '/Users/demo/work/agent-usage'];
@@ -85,7 +96,7 @@ function insertSnapshots(db: Database, now: number): Snapshot[] {
     const id = Number(insSnap.run(d.fetchedAt, i === defs.length - 1 ? now : d.fetchedAt, `demo-${i}`).lastInsertRowid);
     db.transaction(() => {
       for (const m of Object.values(MODELS)) {
-        if (!m.rates) continue;
+        if (!m.rates || m.source !== 'aws-price-list') continue;
         const s = d.scale(m);
         // m.rates are the rates of the model's own tier; the other tier differs by 10%, like the real list.
         for (const tier of ['regional', 'global'] as const) {
@@ -112,7 +123,13 @@ interface Tokens {
 }
 
 function costOf(snaps: readonly Snapshot[], m: DemoModel, ts: number, t: Tokens): { cost: number | null; approx: boolean } {
-  if (!m.rates) return { cost: null, approx: false };
+  if (m.source === 'free-model') return { cost: 0, approx: false };
+  if (!m.rates || m.source === null) return { cost: null, approx: false };
+  if (m.source !== 'aws-price-list') {
+    const r = m.rates;
+    const flat = (t.input * r.input + (t.output + t.reasoning) * r.output + t.cacheRead * r.cacheRead + t.cw5m * r.cw5m + t.cw1h * r.cw1h) / 1e6;
+    return { cost: flat, approx: m.source !== 'aws-pricing-page' };
+  }
   const inEffect = [...snaps].reverse().find((s) => s.fetchedAt <= ts);
   const snap = inEffect ?? (snaps[0] as Snapshot);
   const f = snap.scale(m);
@@ -132,8 +149,8 @@ export function seedDemo(db: Database, opts: SeedOptions = {}): { events: number
   const insEvent = db.prepare(`
     INSERT INTO events (id, agent, session_id, project, ts, provider, model_raw, model, priced, tier,
       input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens,
-      is_subagent, kind, reported_cost_usd, aws_profile_hint, cost_usd, cost_approx, ingested_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?)`);
+      is_subagent, kind, reported_cost_usd, aws_profile_hint, cost_usd, cost_approx, cost_source, ingested_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`);
   const insTool = db.prepare(`INSERT INTO tool_calls (agent, call_id, event_id, name, result_bytes, is_error) VALUES (?,?,?,?,?,?)`);
   const insSession = db.prepare(`INSERT INTO sessions (agent, session_id, title, project) VALUES (?,?,?,?)`);
 
@@ -154,9 +171,9 @@ export function seedDemo(db: Database, opts: SeedOptions = {}): { events: number
     const { cost, approx } = costOf(snaps, m, ts, t);
     const id = `${agent}:${sessionId}:${i}`;
     const project = projectFor(sessionId);
-    insEvent.run(id, agent, sessionId, project, Math.round(ts), m.provider, m.raw, m.canonical, m.rates ? 1 : 0, m.tier,
+    insEvent.run(id, agent, sessionId, project, Math.round(ts), m.provider, m.raw, m.canonical, m.source ? 1 : 0, m.tier,
       Math.round(t.input), Math.round(t.output), Math.round(t.reasoning), Math.round(t.cacheRead), Math.round(t.cw5m), Math.round(t.cw1h),
-      sub ? 1 : 0, kind, cost, approx ? 1 : 0, now);
+      sub ? 1 : 0, kind, m.source === 'agent-reported' ? cost : null, cost, approx ? 1 : 0, cost === null ? null : m.source, now);
     events++;
     let bytesTotal = 0;
     for (let k = 0; k < toolCount; k++) {
@@ -264,6 +281,24 @@ export function seedDemo(db: Database, opts: SeedOptions = {}): { events: number
       sessions++;
       writeEvent('opencode', sid, 0, now - (days - 2 - k) * DAY, MODELS.sonnet46 as DemoModel, { input: between(300_000, 900_000), output: between(20_000, 60_000), reasoning: 0, cacheRead: 0, cw5m: 0, cw1h: 0 }, false, 'session_total', 0);
     }
+
+    // One short session per price source, so every badge shows up in the demo (deterministic token counts).
+    const sourceShowcase: Array<[string, string, DemoModel]> = [
+      ['opencode', 'models-dev', MODELS.gpt5nano as DemoModel],
+      ['opencode', 'pricing-page', MODELS.glm53 as DemoModel],
+      ['pi', 'agent-reported', MODELS.glm5 as DemoModel],
+      ['opencode', 'unknown', MODELS.mystery as DemoModel],
+      ['pi', 'free', MODELS.gemma as DemoModel],
+    ];
+    sourceShowcase.forEach(([agent, tag, model], k) => {
+      const sid = `${agent}-source-${tag}`;
+      insSession.run(agent, sid, `Price source demo: ${model.canonical}`, projectFor(sid));
+      sessions++;
+      for (let i = 0; i < 6; i++) {
+        const t: Tokens = { input: 4_000 + i * 900, output: 500, reasoning: 0, cacheRead: 0, cw5m: 0, cw1h: 0 };
+        writeEvent(agent, sid, i, now - (k + 1) * 2 * 3_600_000 + i * 60_000, model, t, false, 'step', 1);
+      }
+    });
 
     const run = db.prepare(`INSERT INTO adapter_runs (adapter, label, installed, detail, error, last_ingest_at) VALUES (?,?,?,?,NULL,?)`);
     run.run('claude-code', 'Claude Code', 1, '~/.claude/projects', now);

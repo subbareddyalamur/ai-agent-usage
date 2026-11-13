@@ -80,7 +80,7 @@ function OverviewBody({ s, data, metric, split, bucket }: BodyProps) {
     <>
       {s.totals.unpricedTokens > 0 && (
         <div className="banner" role="status">
-          <strong>{formatTokens(s.totals.unpricedTokens)} tokens ({s.totals.unpricedEvents.toLocaleString()} calls) have no price</strong> and are
+          <strong>{formatTokens(s.totals.unpricedTokens)} tokens ({s.totals.unpricedEvents.toLocaleString()} calls) have a price unknown</strong> and are
           not in the cost total (they are not counted as $0, either). See <a href={route.hrefFor(['status'])}>Status</a> for which models.
         </div>
       )}

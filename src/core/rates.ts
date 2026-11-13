@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type { PriceTier } from './types';
 import type { StatusInfo } from './api-types';
+import { costSourcesOverall } from './query-sources';
 
 export interface Rates {
   input: number;
@@ -61,6 +62,7 @@ export function pricingStatus(db: Database, now: number = Date.now()): StatusInf
     latestSnapshotAt: snap.at,
     snapshots: snap.n,
     modelsPriced: priced.n,
+    costSources: costSourcesOverall(db),
     stale: snap.checked === null || now - snap.checked > STALE_AFTER_MS,
   };
 }

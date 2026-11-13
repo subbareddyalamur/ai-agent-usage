@@ -1,0 +1,25 @@
+{
+ "manifest": {
+  "serviceId": "bedrockfoundationmodels"
+ },
+ "sets": {},
+ "regions": {
+  "US East (N. Virginia)": {
+   "ARoGR8jZmJBxxxlDMr4G5S-3uy3IDkfoYJBtbnAwzMk": {
+    "rateCode": "44WHVA34GWNGZPT5.4799GE89SK.6YS6EN2CT7",
+    "price": "12.5000000000",
+    "RegionlessRateCode": "ARoGR8jZmJBxxxlDMr4G5S-3uy3IDkfoYJBtbnAwzMk"
+   },
+   "6pAzdj4_Fi2NYJg_u77RsIR3MKEvuCAIcUVNASz5_Io": {
+    "rateCode": "QQ4W2DPZQUVNJ28C.4799GE89SK.6YS6EN2CT7",
+    "price": "18.8000000000",
+    "RegionlessRateCode": "6pAzdj4_Fi2NYJg_u77RsIR3MKEvuCAIcUVNASz5_Io"
+   }
+  },
+  "US West (Oregon)": {
+   "ARoGR8jZmJBxxxlDMr4G5S-3uy3IDkfoYJBtbnAwzMk": {
+    "price": "999"
+   }
+  }
+ }
+}

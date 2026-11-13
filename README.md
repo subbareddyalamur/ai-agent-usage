@@ -1,7 +1,8 @@
 # AI Agent Usage
 
 Local dashboard + CLI for token usage and estimated cost across your coding agents
-(opencode, Claude Code, Pi, Claude desktop/Cowork, ...). Everything is read-only against the
+(opencode, Claude Code, Pi, Claude desktop/Cowork, Cursor, Antigravity, Antigravity CLI,
+Antigravity IDE, Codex, Gemini CLI, ...). Everything is read-only against the
 agents' own files, stored as metadata only (no prompts, no responses, no tool output).
 
 ```bash
@@ -28,7 +29,7 @@ DB: `~/.local/share/agent-usage/usage.db` (override with `AGENT_USAGE_DB`).
 
 | Thing that changes | What happens |
 |---|---|
-| Prices change / new models | Public AWS Price List is fetched (no credentials) when the newest snapshot is >24h old. Every distinct price list is kept as a dated snapshot; each call is costed with the snapshot in effect when it happened. Deprecated models stay priceable. |
+| Prices change / new models | Public AWS Price List is fetched (no credentials) when the newest snapshot is >24h old. Every distinct price list is kept as a dated snapshot; each call is costed with the snapshot in effect when it happened. Deprecated models stay priceable. Google, Anthropic, OpenAI, and xAI pages are fetched on the same daily cadence and win over models.dev; a later rate prices new calls only. |
 | New model id appears | Matched to the price list by normalised name; Bedrock ARNs are resolved with a read-only `aws bedrock get-inference-profile`. Anything unmatched is listed under Status as *unmapped*, never guessed. |
 | Agent installed / uninstalled | Adapters are auto-discovered and `detect()` runs each time. Not installed = skipped silently, history kept. |
 | New tools / MCP servers | Tool names come from the events; MCP tools group by server automatically. |

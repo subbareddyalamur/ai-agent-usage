@@ -119,4 +119,15 @@ describe('server (real HTTP, seeded DB)', () => {
   test('/api/cache rejects bad filters with 400', async () => {
     expect((await get('/api/cache?from=zzz')).status).toBe(400);
   });
+
+  test('models and status carry the cost-source breakdown', async () => {
+    const models = (await (await get('/api/models')).json()) as Array<{ model: string; costSources: Array<{ source: string | null; events: number }> }>;
+    expect(models.every((m) => Array.isArray(m.costSources) && m.costSources.length > 0)).toBe(true);
+    const all = new Set(models.flatMap((m) => m.costSources.map((c) => c.source)));
+    expect(all.has('models.dev') && all.has('agent-reported') && all.has(null)).toBe(true);
+    const status = (await (await get('/api/status')).json()) as { pricing: { costSources: Array<{ source: string | null; events: number }> } };
+    expect(status.pricing.costSources.length).toBeGreaterThanOrEqual(5);
+    expect(status.pricing.costSources.some((c) => c.source === null)).toBe(true);
+  });
 });
+

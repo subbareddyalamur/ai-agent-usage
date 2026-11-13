@@ -66,10 +66,13 @@ export function buildModelIndex(names: readonly string[]): ModelIndex {
   const bySlug = new Map<string, string>();
   const byTokens = new Map<string, string | null>();
   for (const name of names) {
-    const slug = slugify(name);
-    if (!bySlug.has(slug)) bySlug.set(slug, name);
-    const tk = tokenKey(slug);
-    byTokens.set(tk, byTokens.has(tk) && byTokens.get(tk) !== name ? null : name);
+    // Price-list names are usually display names ("Claude Sonnet 4.5") but some are raw ids
+    // ("google.gemma-4-31b"); index both the plain slug and the id-normalised forms.
+    for (const key of new Set([slugify(name), ...modelCandidates(name)])) {
+      if (!bySlug.has(key)) bySlug.set(key, name);
+      const tk = tokenKey(key);
+      byTokens.set(tk, byTokens.has(tk) && byTokens.get(tk) !== name ? null : name);
+    }
   }
   return {
     size: bySlug.size,

@@ -1,6 +1,7 @@
 import type { ModelRow } from '../../src/core/api-types';
 import type { PageProps } from '../App';
 import { DataTable, type Column } from '../components/DataTable';
+import { ModelSourceBadge } from '../components/SourceBadge';
 import { Async, Empty } from '../components/States';
 import { useApi } from '../lib/api';
 import { formatPct, formatRate, formatTokens, formatUsd } from '../lib/format';
@@ -18,12 +19,14 @@ export function Models({ query, refreshKey }: PageProps) {
       key: 'm',
       header: 'Model',
       wrap: true,
-      render: (r) => (
-        <>
-          {r.model}{' '}
-          {!r.priced && <span className="tag warn" title="No price found in any snapshot. Tokens are counted, cost is not.">unpriced</span>}
-        </>
-      ),
+      render: (r) => r.model,
+    },
+    {
+      key: 'src',
+      header: 'Price source',
+      hint: 'Where the price used for this model came from. Hover a badge with +N to see every source.',
+      wrap: true,
+      render: (r) => <ModelSourceBadge shares={r.costSources} />,
     },
     { key: 'tier', header: 'Rate tier', hint: 'Regional or global price list used for this model', render: (r) => <span className="tag">{r.tier}</span> },
     { key: 'agents', header: 'Agents', wrap: true, render: (r) => r.agents.join(', ') },
@@ -32,7 +35,7 @@ export function Models({ query, refreshKey }: PageProps) {
     { key: 'out', header: 'Output', num: true, render: (r) => formatTokens(r.outputTokens + r.reasoningTokens) },
     { key: 'hit', header: 'Cache hit', num: true, render: (r) => formatPct(r.cacheHitRatio) },
     { key: 'ctx', header: 'Avg context', num: true, render: (r) => formatTokens(r.avgContext) },
-    { key: 'cost', header: 'Est. cost', num: true, render: (r) => (r.priced ? formatUsd(r.costUsd) : <span className="muted">unpriced</span>) },
+    { key: 'cost', header: 'Est. cost', num: true, render: (r) => (r.costSources.length > 0 && r.costSources.every((c) => c.source === null) ? <span className="muted">price unknown</span> : formatUsd(r.costUsd)) },
   ];
   const rateCols: Column<ModelRow>[] = [
     { key: 'm', header: 'Model', wrap: true, render: (r) => r.model },
@@ -58,8 +61,9 @@ export function Models({ query, refreshKey }: PageProps) {
               <section className="card" style={{ marginTop: 14 }}>
                 <h2>Current rates, USD per 1M tokens</h2>
                 <p className="muted">
-                  Read from the newest saved AWS price list. Past usage keeps the price that was in effect at the time. Why cache reads and writes differ:{' '}
-                  <a href={route.hrefFor(['concepts'], { section: 'prompt-caching' })}>prompt caching</a>.
+                  Read from the newest saved price data. Past usage keeps the price that was in effect at the time. Why cache reads and writes differ:{' '}
+                  <a href={route.hrefFor(['concepts'], { section: 'prompt-caching' })}>prompt caching</a>. Where each price comes from:{' '}
+                  <a href={route.hrefFor(['concepts'], { section: 'price-sources' })}>price sources</a>.
                 </p>
                 <DataTable caption="Rates" columns={rateCols} rows={rows.filter((r) => r.rates)} rowKey={(r) => r.model} />
               </section>
