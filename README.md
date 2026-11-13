@@ -76,13 +76,3 @@ src/cli/        serve | ingest | prices | status | report | insights
 agensi/         SKILL.md package listed on Agensi
 src/dev/seed.ts demo data generator (never touches the real DB)
 ```
-
-## Agensi skill
-
-`agensi/agent-usage/` is the marketplace skill: `SKILL.md` plus `references/commands.md`. It tells an agent to clone this repo and run the CLI. The dashboard source is not in the package.
-
-The listing is [AI Agent Usage](https://agensi.io/skills/ai-agent-usage) ($5, pending review). Rebuild the upload with:
-
-```bash
-cd agensi/agent-usage && zip -r -X ../ai-agent-usage-skill.zip SKILL.md references
-```
