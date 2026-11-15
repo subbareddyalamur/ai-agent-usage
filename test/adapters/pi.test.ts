@@ -2,6 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import adapter from '../../src/adapters/pi';
+import { openDb } from '../../src/core/db';
+import { runIngest } from '../../src/core/ingest';
+import { fakePricing } from '../helpers';
 import type { IngestItem } from '../../src/core/types';
 import { adapterContract, collect, eventsOf, memoryState, tempHome } from './contract';
 import { appendJsonl, writeJsonl } from './fixtures';
@@ -35,6 +38,39 @@ adapterContract(adapter, fixtureHome);
 const resultsOf = (items: readonly IngestItem[]) => items.flatMap((i) => (i.type === 'toolResult' ? [i.result] : []));
 
 describe('pi parsing', () => {
+  test('prices Pi-Bolt session usage through the standard ingest pipeline without duplicates', async () => {
+    const db = openDb(':memory:');
+    const home = fixtureHome();
+    await runIngest(db, [adapter], fakePricing(), { home });
+    await runIngest(db, [adapter], fakePricing(), { home });
+    const rows = db.query('SELECT agent, cost_usd, cost_source, priced FROM events').all() as Array<{
+      agent: string; cost_usd: number; cost_source: string; priced: number;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ agent: 'pi', cost_source: 'aws-price-list', priced: 1 });
+    expect(rows[0]?.cost_usd).toBeCloseTo((10 + 5 * 5 + 100 * 0.1 + 20 * 1.25) / 1e6, 10);
+    db.close();
+  });
+  test('splits reasoning and one-hour cache writes without counting either twice', async () => {
+    const home = tempHome();
+    writeJsonl(file(home), [assistant('a1', {}, { output: 50, reasoning: 12, cacheWrite: 20, cacheWrite1h: 8 })]);
+    const [event] = eventsOf(await collect(adapter, home));
+    expect(event).toMatchObject({ outputTokens: 38, reasoningTokens: 12, cacheWrite5mTokens: 12, cacheWrite1hTokens: 8 });
+  });
+
+  test('clamps invalid subset counts to the reported totals', async () => {
+    const home = tempHome();
+    writeJsonl(file(home), [assistant('a1', {}, { output: 5, reasoning: 10, cacheWrite: 20, cacheWrite1h: 25 })]);
+    const [event] = eventsOf(await collect(adapter, home));
+    expect(event).toMatchObject({ outputTokens: 0, reasoningTokens: 5, cacheWrite5mTokens: 0, cacheWrite1hTokens: 20 });
+  });
+
+  test('records standalone usage entries with their own model and provider', async () => {
+    const home = tempHome();
+    writeJsonl(file(home), [{ type: 'usage', id: 'warm', timestamp: '2026-10-01T10:00:10.000Z', kind: 'cache_warm', provider: 'amazon-bedrock', model: 'model-x', usage: { input: 0, output: 0, cacheRead: 500, cacheWrite: 0 } }]);
+    expect(eventsOf(await collect(adapter, home))).toMatchObject([{ id: 'pi:sess-uuid-1:warm', modelRaw: 'model-x', provider: 'amazon-bedrock', cacheReadTokens: 500 }]);
+  });
+
   test('maps usage, provider, cost, project and ids', async () => {
     const [e] = eventsOf(await collect(adapter, fixtureHome()));
     expect(e).toMatchObject({

@@ -229,3 +229,68 @@ describe('priceEvent', () => {
     expect(h.svc.priceEvent({ canonical: 'Half', priced: true, tier: 'regional' }, zero).costUsd).toBeNull();
   });
 });
+
+describe('priceEvent: long-context pricing', () => {
+  const longRow = (model: string, usagetype: string, type: string, usd: number) => ({
+    model, usagetype: `USE1-MP:USE1_${usagetype}-Units`, type, usd,
+  });
+  // Rates as published for OpenAI GPT-6.1 Terra (US CRIS): a single 30m cache-write SKU, plus long-context twins.
+  const TERRA = 'OpenAI GPT-6.1 Terra';
+  const terra = { canonical: TERRA, priced: true, tier: 'regional' as const };
+  const terraDoc = priceDoc(
+    [{ model: TERRA, rates: { input: 1.1, output: 5.5, cacheRead: 0.055 } }],
+    [
+      longRow(TERRA, 'cache_write_tokens_30m_standard', 'Prompt cache write input tokens', 1.375),
+      longRow(TERRA, 'input_tokens_long_ctx_standard', 'Input tokens', 2.2),
+      longRow(TERRA, 'output_tokens_long_ctx_standard', 'Output tokens', 8.25),
+      longRow(TERRA, 'cache_read_tokens_long_ctx_standard', 'Prompt cache read input tokens', 0.11),
+      longRow(TERRA, 'cache_write_tokens_30m_long_ctx_standard', 'Prompt cache write input tokens', 2.75),
+    ],
+  );
+  async function terraService() {
+    const h = harness(openDb(':memory:'), terraDoc);
+    await h.svc.refreshIfStale();
+    return h;
+  }
+
+  test('a prompt up to 272K tokens is billed at the base rates, including the 30m cache write', async () => {
+    const h = await terraService();
+    const r = h.svc.priceEvent(terra, { ...zero, cacheReadTokens: 200_000, cacheWrite5mTokens: 72_000, outputTokens: M });
+    expect(r.costUsd).toBeCloseTo(0.2 * 0.055 + 0.072 * 1.375 + 5.5, 9);
+  });
+
+  test('one token over 272K switches every token class to the long-context rates', async () => {
+    const h = await terraService();
+    const r = h.svc.priceEvent(terra, { ...zero, cacheReadTokens: 200_000, cacheWrite5mTokens: 72_001, outputTokens: M });
+    expect(r.costUsd).toBeCloseTo(0.2 * 0.11 + 0.072001 * 2.75 + 8.25, 9);
+  });
+
+  test('reproduces the AWS bill for Terra on 2026-11-13 (US-East-1 invoice: $10.98)', async () => {
+    const h = await terraService();
+    const r = h.svc.priceEvent(terra, {
+      ...zero, cacheReadTokens: 42_748_800, cacheWrite5mTokens: 2_211_900, outputTokens: 23_600,
+    });
+    expect(r.costUsd).toBeCloseTo(10.98, 2);
+  });
+
+  test('non-OpenAI models switch above 200K', async () => {
+    const h = harness(
+      openDb(':memory:'),
+      priceDoc(
+        [{ model: 'Claude Haiku 5.5', rates: { input: 0.11, output: 0.55, cacheRead: 0.011, cw5m: 0.1375 } }],
+        [longRow('Claude Haiku 5.5', 'cache_read_tokens_long_ctx_standard', 'Prompt cache read input tokens', 0.055)],
+      ),
+    );
+    await h.svc.refreshIfStale();
+    const haiku = { canonical: 'Claude Haiku 5.5', priced: true, tier: 'regional' as const };
+    expect(h.svc.priceEvent(haiku, { ...zero, cacheReadTokens: 200_000 }).costUsd).toBeCloseTo(0.2 * 0.011, 9);
+    expect(h.svc.priceEvent(haiku, { ...zero, cacheReadTokens: 200_001 }).costUsd).toBeCloseTo(0.200001 * 0.055, 9);
+  });
+
+  test('a model with no long-context rows keeps its base rates at any prompt size (Claude Sonnet 5.5)', async () => {
+    const h = harness(openDb(':memory:'), priceDoc([SONNET]));
+    await h.svc.refreshIfStale();
+    const model = await h.svc.resolveModel('claude-sonnet-5-5');
+    expect(h.svc.priceEvent(model, { ...zero, cacheReadTokens: 900_000 }).costUsd).toBeCloseTo(0.9 * 0.11, 9);
+  });
+});

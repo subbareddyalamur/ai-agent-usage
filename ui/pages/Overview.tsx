@@ -11,7 +11,7 @@ import { getJson } from '../lib/api';
 import { toApiQuery } from '../lib/filters';
 import { usePolling } from '../lib/usePolling';
 import { TOKEN_COLORS } from '../lib/colors';
-import { formatPct, formatTokens, formatUsd } from '../lib/format';
+import { formatAgent, formatPct, formatTokens, formatUsd } from '../lib/format';
 import { pivot, type Metric, type Pivoted } from '../lib/series';
 import { useRoute } from '../lib/router';
 
@@ -56,7 +56,7 @@ const modelCols: Column<SummaryResult['byModel'][number]>[] = [
   { key: 'u', header: 'Est. cost', num: true, render: (r) => money(r) },
 ];
 const agentCols: Column<SummaryResult['byAgent'][number]>[] = [
-  { key: 'a', header: 'Agent', render: (r) => r.agent },
+  { key: 'a', header: 'Agent', render: (r) => formatAgent(r.agent) },
   { key: 'c', header: 'Calls', num: true, render: (r) => r.events.toLocaleString() },
   { key: 't', header: 'Tokens', num: true, render: (r) => formatTokens(totalTokens(r)) },
   { key: 'h', header: 'Cache hit', num: true, render: (r) => formatPct(r.cacheHitRatio) },
@@ -100,7 +100,7 @@ function OverviewBody({ s, data, metric, split, bucket }: BodyProps) {
           <Seg<Split> label="Split by" value={split} onChange={(v) => route.setParams({ split: v === 'model' ? null : v })} options={[{ id: 'model', label: 'Model' }, { id: 'agent', label: 'Agent' }]} />
           <Seg<Bucket> label="Group by" value={bucket} onChange={(v) => route.setParams({ bucket: v === 'day' ? null : v })} options={[{ id: 'day', label: 'Day' }, { id: 'week', label: 'Week' }, { id: 'month', label: 'Month' }]} />
         </div>
-        {data.rows.length === 0 ? <Empty title="Nothing to chart" /> : <StackedBars data={data} metric={metric} label={`Stacked bar chart of ${metric} per ${bucket} split by ${split}`} />}
+        {data.rows.length === 0 ? <Empty title="Nothing to chart" /> : <StackedBars data={data} metric={metric} label={`Stacked bar chart of ${metric} per ${bucket} split by ${split}`} seriesLabel={split === 'agent' ? formatAgent : undefined} />}
       </section>
       <div className="grid cols-2" style={{ marginTop: 14 }}>
         <section className="card"><DataTable caption="By model" columns={modelCols} rows={s.byModel} rowKey={(r) => r.model} /></section>

@@ -10,7 +10,7 @@ function tick(bucket: string): string {
   return m ? `${MONTHS[Number(m[1]) - 1] ?? ''} ${Number(m[2])}` : bucket;
 }
 
-export function StackedBars({ data, metric, label }: { data: Pivoted; metric: Metric; label: string }) {
+export function StackedBars({ data, metric, label, seriesLabel }: { data: Pivoted; metric: Metric; label: string; seriesLabel?: (key: string) => string }) {
   const fmt = metric === 'cost' ? formatUsd : formatTokens;
   return (
     <div className="chart" role="img" aria-label={label}>
@@ -27,7 +27,7 @@ export function StackedBars({ data, metric, label }: { data: Pivoted; metric: Me
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           {data.keys.map((k) => (
-            <Bar key={k} dataKey={k} stackId="a" fill={colorFor(k, data.keys)} isAnimationActive={false} />
+            <Bar key={k} dataKey={k} name={seriesLabel ? seriesLabel(k) : k} stackId="a" fill={colorFor(k, data.keys)} isAnimationActive={false} />
           ))}
         </BarChart>
       </ResponsiveContainer>

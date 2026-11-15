@@ -4,7 +4,7 @@ import type { PageProps } from '../App';
 import { DataTable, type Column, type Sort } from '../components/DataTable';
 import { Async, Empty } from '../components/States';
 import { useApi } from '../lib/api';
-import { formatBytes, formatTokens } from '../lib/format';
+import { formatAgent, formatBytes, formatTokens } from '../lib/format';
 import { useRoute } from '../lib/router';
 
 type Key = 'calls' | 'total' | 'avg' | 'max';
@@ -37,7 +37,7 @@ export function Tools({ query, refreshKey }: PageProps) {
   const cols: Column<ToolRow>[] = [
     { key: 'name', header: 'Tool', wrap: true, render: (r) => <code>{r.name}</code> },
     { key: 'group', header: 'Source', hint: 'built-in tool or the MCP server it comes from', render: (r) => <span className="tag">{r.group}</span> },
-    { key: 'agents', header: 'Agents', wrap: true, render: (r) => r.agents.join(', ') },
+    { key: 'agents', header: 'Agents', wrap: true, render: (r) => r.agents.map(formatAgent).join(', ') },
     { key: 'calls', header: 'Calls', num: true, sortKey: 'calls', render: (r) => r.calls.toLocaleString() },
     {
       key: 'total',

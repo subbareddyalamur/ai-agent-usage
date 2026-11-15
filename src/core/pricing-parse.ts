@@ -41,7 +41,7 @@ function usageBody(usagetype: string): string {
 
 /**
  * Classifies an AWS usagetype into kind/tier/long-context, or null when it is not a plain
- * on-demand standard token price (batch, latency-optimized, reserved, 30m cache TTL, ...).
+ * on-demand standard token price (batch, latency-optimized, reserved, ...).
  * Works on both naming families seen in the price list:
  *   input_tokens_long_ctx_global_standard   and   CacheWrite1hInputTokenCount_Global
  */
@@ -52,7 +52,7 @@ export function classifyUsageType(usagetype: string): UsageClass | null {
   let kind: PriceKind;
   if (/cache_?read/.test(body)) kind = 'cache_read';
   else if (/cache_?write/.test(body)) {
-    if (/30m/.test(body)) return null;
+    // OpenAI-on-Bedrock models only sell a 30m write TTL (no 5m SKU), so 30m is their "short" write.
     kind = /1h/.test(body) ? 'cache_write_1h' : 'cache_write_5m';
   } else if (/^input|input_?token/.test(body)) kind = 'input';
   else if (/^output|output_?token/.test(body)) kind = 'output';

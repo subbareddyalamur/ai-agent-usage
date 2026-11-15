@@ -5,11 +5,13 @@ export function MultiSelect({
   options,
   selected,
   onChange,
+  optionLabel = (option) => option,
 }: {
   label: string;
   options: readonly string[];
   selected: readonly string[];
   onChange(next: string[]): void;
+  optionLabel?(option: string): string;
 }) {
   const id = useId();
   const toggle = (o: string) =>
@@ -32,7 +34,7 @@ export function MultiSelect({
           {options.map((o) => (
             <label key={o}>
               <input type="checkbox" checked={selected.includes(o)} onChange={() => toggle(o)} />
-              {o}
+              {optionLabel(o)}
             </label>
           ))}
         </div>

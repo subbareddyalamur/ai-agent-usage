@@ -112,6 +112,18 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/**
+ * Prompt size above which Bedrock bills a call at the long-context rates. The price list does not
+ * publish it; these are read off the AWS bill: OpenAI models switch above 272K (a 200-272K call
+ * was still billed standard), everything else above 200K. Models without long-context rows
+ * (Claude Opus/Sonnet 5.5) are unaffected because their long-context lookup falls back to base rates.
+ */
+const longCtxThreshold = (canonical: string): number => (/^openai\b/i.test(canonical) ? 272_000 : 200_000);
+
+function isLongContext(canonical: string, i: PriceInput): boolean {
+  return i.inputTokens + i.cacheReadTokens + i.cacheWrite5mTokens + i.cacheWrite1hTokens > longCtxThreshold(canonical);
+}
+
 const awsSource = (feed: string): PriceSource => (feed === 'pricing-page' ? 'aws-pricing-page' : 'aws-price-list');
 
 /**
@@ -197,16 +209,21 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
 
   // ---- AWS rates -------------------------------------------------------------------------------
 
-  const ratesIn = (snapshotId: number, model: string, region: string, tier: PriceTier): RateSet | null => {
-    const key = `${snapshotId}|${model}|${region}|${tier}`;
+  /**
+   * Rates for one model/region/tier. With `longCtx`, the long-context SKUs override the base ones kind by
+   * kind, so a model with no long-context rows (Claude Opus/Sonnet 5.5) keeps its base rates.
+   */
+  const ratesIn = (snapshotId: number, model: string, region: string, tier: PriceTier, longCtx: boolean): RateSet | null => {
+    const key = `${snapshotId}|${model}|${region}|${tier}|${longCtx ? 1 : 0}`;
     const hit = rateCache.get(key);
     if (hit !== undefined) return hit;
     const rows = db
       .query(
         `SELECT kind, usd_per_mtok AS usd, source FROM prices
-         WHERE snapshot_id = ? AND model = ? AND region = ? AND tier = ? AND long_ctx = 0`,
+         WHERE snapshot_id = ? AND model = ? AND region = ? AND tier = ? AND long_ctx <= ?
+         ORDER BY long_ctx`,
       )
-      .all(snapshotId, model, region, tier) as Array<{ kind: PriceKind; usd: number; source: string }>;
+      .all(snapshotId, model, region, tier, longCtx ? 1 : 0) as Array<{ kind: PriceKind; usd: number; source: string }>;
     const out: RateSet | null =
       rows.length === 0 ? null : { rates: Object.fromEntries(rows.map((r) => [r.kind, r.usd])), feed: rows[0]?.source ?? '' };
     rateCache.set(key, out);
@@ -214,12 +231,12 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
   };
 
   /** Rates for a model in one snapshot: requested tier/region first, then the other tier, then other regions. */
-  const lookupRates = (snapshotId: number, model: string, tier: PriceTier): (RateSet & { exact: boolean }) | null => {
+  const lookupRates = (snapshotId: number, model: string, tier: PriceTier, longCtx: boolean): (RateSet & { exact: boolean }) | null => {
     const regions = [defaultRegion, ...FALLBACK_REGIONS.filter((r) => r !== defaultRegion)];
     const tiers: PriceTier[] = tier === 'global' ? ['global', 'regional'] : ['regional', 'global'];
     for (const t of tiers) {
       for (const region of regions) {
-        const set = ratesIn(snapshotId, model, region, t);
+        const set = ratesIn(snapshotId, model, region, t, longCtx);
         if (set?.rates.input !== undefined && set.rates.output !== undefined) {
           return { ...set, exact: t === tier && region === defaultRegion };
         }
@@ -514,6 +531,7 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
       const snaps = loadSnapshots();
       if (!model.priced || snaps.length === 0) return { costUsd: null, approx: false };
 
+      const longCtx = isLongContext(model.canonical, input);
       let idx = -1;
       for (let i = 0; i < snaps.length; i++) if ((snaps[i] as Snapshot).fetchedAt <= input.ts) idx = i;
       let approx = idx === -1;
@@ -525,7 +543,7 @@ export function createPricingService(db: Database, opts: PricingOptions = {}): P
         .sort((a, b) => Math.abs(a - idx) - Math.abs(b - idx) || a - b);
       let found: (RateSet & { exact: boolean }) | null = null;
       for (const i of order) {
-        found = lookupRates((snaps[i] as Snapshot).id, model.canonical, model.tier);
+        found = lookupRates((snaps[i] as Snapshot).id, model.canonical, model.tier, longCtx);
         if (found) {
           if (i !== idx) approx = true;
           break;

@@ -3,7 +3,7 @@ import type { PageProps } from '../App';
 import { DataTable, type Column } from '../components/DataTable';
 import { Async, Empty } from '../components/States';
 import { useApi } from '../lib/api';
-import { baseName, formatDateTime, formatPct, formatTokens, formatUsd } from '../lib/format';
+import { baseName, formatAgent, formatDateTime, formatPct, formatTokens, formatUsd } from '../lib/format';
 import { useRoute } from '../lib/router';
 
 const PAGE_SIZE = 25;
@@ -26,7 +26,7 @@ export function Sessions({ query, refreshKey }: PageProps) {
 
   const cols: Column<SessionRow>[] = [
     { key: 'ts', header: 'Last active', sortKey: 'ts', render: (r) => formatDateTime(r.lastTs) },
-    { key: 'agent', header: 'Agent', render: (r) => r.agent },
+    { key: 'agent', header: 'Agent', render: (r) => formatAgent(r.agent) },
     {
       key: 'title',
       header: 'Session',

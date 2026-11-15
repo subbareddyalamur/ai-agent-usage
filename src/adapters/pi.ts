@@ -31,8 +31,10 @@ function eventFrom(entry: Json, message: Json, ctx: FileCtx): IngestItem | undef
 
   const input = toInt(usage.input);
   const output = toInt(usage.output);
+  const reasoning = Math.min(output, toInt(usage.reasoning));
   const cacheRead = toInt(usage.cacheRead);
   const cacheWrite = toInt(usage.cacheWrite);
+  const cacheWrite1h = Math.min(cacheWrite, toInt(usage.cacheWrite1h));
   if (input + output + cacheRead + cacheWrite === 0) return undefined;
 
   const tools: ToolCall[] = [];
@@ -58,11 +60,11 @@ function eventFrom(entry: Json, message: Json, ctx: FileCtx): IngestItem | undef
       ...(provider ? { provider } : {}),
       modelRaw: model,
       inputTokens: input,
-      outputTokens: output,
-      reasoningTokens: 0,
+      outputTokens: output - reasoning,
+      reasoningTokens: reasoning,
       cacheReadTokens: cacheRead,
-      cacheWrite5mTokens: cacheWrite,
-      cacheWrite1hTokens: 0,
+      cacheWrite5mTokens: cacheWrite - cacheWrite1h,
+      cacheWrite1hTokens: cacheWrite1h,
       isSubagent: false,
       kind: 'step',
       ...(cost !== undefined ? { reportedCostUsd: cost } : {}),
@@ -78,6 +80,9 @@ function* parseRecords(records: readonly Json[], ctx: FileCtx): Generator<Ingest
       ctx.cwd = asString(rec.cwd) ?? ctx.cwd;
     } else if (rec.type === 'session_info') {
       ctx.title = asString(rec.name) ?? ctx.title;
+    } else if (rec.type === 'usage') {
+      const ev = eventFrom(rec, rec, ctx);
+      if (ev) yield ev;
     } else if (rec.type === 'message' && isObject(rec.message)) {
       const m = rec.message;
       if (m.role === 'assistant') {
@@ -108,7 +113,7 @@ function* parseRecords(records: readonly Json[], ctx: FileCtx): Generator<Ingest
 
 const adapter: Adapter = {
   id: AGENT,
-  label: 'Pi',
+  label: 'Pi-Bolt / Pi',
 
   async detect({ home }): Promise<DetectResult> {
     try {

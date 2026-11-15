@@ -1,6 +1,6 @@
 import type { FilterOptions } from '../../src/core/api-types';
 import { PRESETS, type FilterState, type RangePreset } from '../lib/filters';
-import { relativeTime } from '../lib/format';
+import { formatAgent, relativeTime } from '../lib/format';
 import { MultiSelect } from './MultiSelect';
 
 export interface FilterBarProps {
@@ -43,7 +43,7 @@ export function FilterBar({ filters, options, onChange, refreshing, refreshError
           </div>
         </>
       )}
-      <MultiSelect label="Agents" options={options?.agents ?? []} selected={filters.agents} onChange={(agents) => onChange({ agents })} />
+      <MultiSelect label="Agents" options={options?.agents ?? []} selected={filters.agents} onChange={(agents) => onChange({ agents })} optionLabel={formatAgent} />
       <MultiSelect label="Models" options={options?.models ?? []} selected={filters.models} onChange={(models) => onChange({ models })} />
       <label className="check">
         <input type="checkbox" checked={filters.subagents} onChange={(e) => onChange({ subagents: e.target.checked })} />

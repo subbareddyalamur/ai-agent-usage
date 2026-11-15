@@ -1,7 +1,7 @@
 # AI Agent Usage
 
 Local dashboard + CLI for token usage and estimated cost across your coding agents
-(opencode, Claude Code, Pi, Claude desktop/Cowork, Cursor, Antigravity, Antigravity CLI,
+(opencode, Claude Code, Pi / Pi-Bolt, Claude desktop/Cowork, Cursor, Antigravity, Antigravity CLI,
 Antigravity IDE, Codex, Gemini CLI, ...). Everything is read-only against the
 agents' own files, stored as metadata only (no prompts, no responses, no tool output).
 
@@ -20,6 +20,14 @@ bun test
 `report` and `insights` take `--since 7d|36h|2w|YYYY-MM-DD`, `--until now|YYYY-MM-DD`, `--agent a,b`, `--model m1,m2`, `--no-subagents`, `--tz Europe/Berlin`, and `--json`. `report --by` is `day` (default), `week`, `model`, `agent`, or `session`.
 
 DB: `~/.local/share/agent-usage/usage.db` (override with `AGENT_USAGE_DB`).
+
+Pi and Pi-Bolt sessions in `~/.pi/agent/sessions` share the `pi` agent filter and the
+same pricing pipeline. They are not counted twice or attributed separately: their shared
+session format does not reliably identify which executable created a session. The adapter
+reads the default session directory; custom session directories, ephemeral sessions, and
+nested tool or summary usage are not included. Newly supported standalone usage entries
+and token breakdowns are ingested as files are read; previously consumed lines are not
+backfilled automatically.
 
 ## Live view and cache misses
 

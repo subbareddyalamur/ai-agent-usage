@@ -1,3 +1,8 @@
+/** Display name only; filters and storage continue to use the original agent ID. */
+export function formatAgent(id: string): string {
+  return id === 'pi' ? 'Pi-Bolt / Pi' : id;
+}
+
 const compact = (n: number, digits: number): string => n.toFixed(digits).replace(/\.0+$|(\.\d*[1-9])0+$/, '$1');
 
 export function formatTokens(n: number): string {

@@ -6,7 +6,7 @@ import { ReasonTag } from '../components/ReasonTag';
 import { StepTimeline } from '../components/StepTimeline';
 import { Async } from '../components/States';
 import { useApi } from '../lib/api';
-import { baseName, formatBytes, formatDateTime, formatPct, formatTokens, formatUsd } from '../lib/format';
+import { baseName, formatAgent, formatBytes, formatDateTime, formatPct, formatTokens, formatUsd } from '../lib/format';
 import { useRoute } from '../lib/router';
 
 interface ToolAgg {
@@ -48,7 +48,7 @@ export function SessionDetail({ agent, sessionId, refreshKey }: { agent: string;
             <>
               <h1>{r.title || r.sessionId}</h1>
               <p className="muted">
-                {r.agent} · {baseName(r.project)} · {formatDateTime(r.firstTs)} → {formatDateTime(r.lastTs)} · {r.models.join(', ')}
+                {formatAgent(r.agent)} · {baseName(r.project)} · {formatDateTime(r.firstTs)} → {formatDateTime(r.lastTs)} · {r.models.join(', ')}
                 {r.hasSubagents && <> · <span className="tag">includes subagents</span></>}
               </p>
               {r.totalOnly && (

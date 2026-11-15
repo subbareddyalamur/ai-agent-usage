@@ -1,6 +1,6 @@
 import type { CacheMissStep, CacheModelRow, CacheReasonRow, CacheSessionRow } from '../../src/core/api-types';
 import { formatDuration, REASON_LABEL, sortReasons } from '../lib/cache';
-import { formatDateTime, formatPct, formatTokens, formatUsd } from '../lib/format';
+import { formatAgent, formatDateTime, formatPct, formatTokens, formatUsd } from '../lib/format';
 import { DataTable, type Column } from './DataTable';
 import { ReasonTag } from './ReasonTag';
 
@@ -47,7 +47,7 @@ export function CacheModelsTable({ rows }: { rows: readonly CacheModelRow[] }) {
 export function CacheSessionsTable({ rows, href }: { rows: readonly CacheSessionRow[]; href: Href }) {
   const cols: Column<CacheSessionRow>[] = [
     { key: 't', header: 'Session', wrap: true, render: (r) => <a href={href(['sessions', r.agent, r.sessionId])}>{r.title || r.sessionId}</a> },
-    { key: 'a', header: 'Agent', render: (r) => r.agent },
+    { key: 'a', header: 'Agent', render: (r) => formatAgent(r.agent) },
     { key: 's', header: 'Steps', num: true, render: (r) => r.steps.toLocaleString() },
     { key: 'ms', header: 'Missed steps', num: true, render: (r) => r.missSteps.toLocaleString() },
     { key: 'h', header: 'Hit ratio', num: true, render: (r) => formatPct(r.hitRatio) },

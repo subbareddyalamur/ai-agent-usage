@@ -4,7 +4,7 @@ import { DataTable, type Column } from '../components/DataTable';
 import { ModelSourceBadge } from '../components/SourceBadge';
 import { Async, Empty } from '../components/States';
 import { useApi } from '../lib/api';
-import { formatPct, formatRate, formatTokens, formatUsd } from '../lib/format';
+import { formatAgent, formatPct, formatRate, formatTokens, formatUsd } from '../lib/format';
 import { useRoute } from '../lib/router';
 
 const rate = (r: ModelRow, pick: (x: NonNullable<ModelRow['rates']>) => number) => (r.rates ? formatRate(pick(r.rates)) : '–');
@@ -29,7 +29,7 @@ export function Models({ query, refreshKey }: PageProps) {
       render: (r) => <ModelSourceBadge shares={r.costSources} />,
     },
     { key: 'tier', header: 'Rate tier', hint: 'Regional or global price list used for this model', render: (r) => <span className="tag">{r.tier}</span> },
-    { key: 'agents', header: 'Agents', wrap: true, render: (r) => r.agents.join(', ') },
+    { key: 'agents', header: 'Agents', wrap: true, render: (r) => r.agents.map(formatAgent).join(', ') },
     { key: 'calls', header: 'Calls', num: true, render: (r) => r.events.toLocaleString() },
     { key: 'prompt', header: 'Prompt tokens', num: true, hint: 'fresh input + cache read + cache write', render: (r) => formatTokens(prompt(r)) },
     { key: 'out', header: 'Output', num: true, render: (r) => formatTokens(r.outputTokens + r.reasoningTokens) },
